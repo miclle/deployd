@@ -4,7 +4,7 @@
 
 deployd 是一个面向已有运行环境的 Go 部署执行内核：解析固定 Git 提交，严格校验部署 YAML，执行安装或构建脚本，启动前台服务，并等待 HTTP 就绪。
 
-导入包名为 `deploy`，模块为 `github.com/miclle/deployd`。要求 Go 1.25 或更新版本；内置本地运行时支持 Linux 和 macOS。采用 [MIT 协议](LICENSE)。
+导入包名为 `deploy`，模块为 `github.com/miclle/deployd`。要求 Go 1.25 或更新版本；内置本地运行时支持 Linux 和 macOS。
 
 ## 使用
 

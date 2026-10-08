@@ -8,7 +8,6 @@ installation/build script, start a foreground service, and wait for HTTP readine
 
 The import name is `deploy`; the module is `github.com/miclle/deployd`.
 Go 1.25 or newer is required. The built-in local runtime supports Linux and macOS.
-Licensed under [MIT](LICENSE).
 
 ## Use
 

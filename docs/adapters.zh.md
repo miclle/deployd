@@ -1,0 +1,19 @@
+# 适配器
+
+[English](adapters.md)
+
+## Git 源码
+
+`source/git.New` 接受不含凭证的 HTTPS 仓库 URL，以及分支、Tag、完整 SHA 或 `HEAD`。控制进程和运行环境均需安装 Git。解析使用临时仓库、默认五分钟时限、有界 Blob 读取，且配置必须是普通文件。源码准备只拉取保存的 SHA 并校验 HEAD，不再读取原始可变引用。
+
+本地绝对路径要求显式设置 `AllowLocal: true`，仅用于可信本地执行。`Env`、`CheckoutEnv` 分别提供控制进程和目标环境的临时 Git 认证环境；控制进程的凭证 Helper 不会自动出现在远端。调用方负责仓库 Host 白名单和私有源码授权。Git 错误丢弃 stderr，输出有界并根据 CheckoutEnv 脱敏。
+
+## 本地 POSIX 运行时
+
+`runtime/local` 支持 Linux、macOS，以宿主账号执行，适用于可信开发／测试或具有外部隔离的部署 Agent。有限命令受取消控制；长期服务使用独立进程组。停止校验内存中的运行时／进程／标签组合后终止对应组。Close 停止持有的工作负载。记录不能跨控制进程重启恢复。
+
+## envd 运行时
+
+`runtime/envd` 通过标准库 HTTP 使用 Connect JSON 访问 envd Process 服务。调用方提供已有 Agent 地址、运行时身份、临时 Token、用户和端口到就绪地址的映射。Agent 请求禁止重定向，每个响应／Envelope 最大 1 MiB，不无限累计输出。Start 确认 PID 后关闭观察流；Agent 必须在流断开后保持进程运行。库不持有持续日志订阅。
+
+Inspect／Stop 校验运行时、PID 和标签；未知启动结果可通过唯一标签收敛。Agent API 不提供原子比较后发送信号的 fencing：调用方必须串行操作同一次执行，且不得复用操作标签。首版不含直接 SSH 适配或基础设施创建。

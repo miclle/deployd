@@ -39,6 +39,7 @@ type Source interface {
 type Plan struct {
 	snapshot Snapshot
 	config   Config
+	data     []byte
 }
 
 // Snapshot returns the credential-free source evidence.
@@ -46,6 +47,10 @@ func (p Plan) Snapshot() Snapshot { return p.snapshot }
 
 // Config returns a copy of the validated configuration.
 func (p Plan) Config() Config { return p.config }
+
+// ConfigBytes returns a copy of the original YAML for caller-owned persistence.
+// Save it with Snapshot to restore the plan without resolving a mutable reference.
+func (p Plan) ConfigBytes() []byte { return append([]byte(nil), p.data...) }
 
 // Prepare validates configuration before the caller provisions a target.
 func Prepare(ctx context.Context, source Source, configPath string) (Plan, error) {
@@ -79,7 +84,7 @@ func Restore(snapshot Snapshot, data []byte) (Plan, error) {
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{snapshot: snapshot, config: config}, nil
+	return Plan{snapshot: snapshot, config: config, data: append([]byte(nil), data...)}, nil
 }
 
 func validCommit(value string) bool {

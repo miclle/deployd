@@ -35,16 +35,38 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"processes": a.processes})
 	case "/process.Process/SendSignal":
+		var request struct {
+			Process struct {
+				PID uint32 `json:"pid"`
+			} `json:"process"`
+			Signal string `json:"signal"`
+		}
+		if json.NewDecoder(r.Body).Decode(&request) != nil || request.Process.PID == 0 || request.Signal != "SIGNAL_SIGTERM" {
+			w.WriteHeader(400)
+			return
+		}
 		a.signals++
 		a.processes = nil
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, "{}")
 	case "/process.Process/Start":
-		if _, _, err := readEnvelope(r.Body); err != nil {
+		body, _, err := readEnvelope(r.Body)
+		var request struct {
+			Process struct {
+				Cmd  string   `json:"cmd"`
+				Args []string `json:"args"`
+			} `json:"process"`
+			Tag string `json:"tag"`
+		}
+		if err != nil || json.Unmarshal(body, &request) != nil || request.Process.Cmd != "/bin/sh" || len(request.Process.Args) != 2 || request.Process.Args[0] != "-c" || !strings.Contains(request.Process.Args[1], "setsid /bin/sh") {
 			w.WriteHeader(400)
 			return
 		}
 		w.Header().Set("Content-Type", "application/connect+json")
+		if a.mode == "lost-finite-start" {
+			a.processes = []processInfo{{PID: 42, Tag: request.Tag}}
+			return
+		}
 		if a.mode == "early" {
 			writeEvent(w, `{"event":{"end":{"exited":true,"exitCode":9}}}`)
 			return
@@ -72,7 +94,7 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if a.mode == "background" {
-			a.processes = []processInfo{{PID: 42, Tag: "attempt"}}
+			a.processes = []processInfo{{PID: 42, Tag: request.Tag}}
 			return
 		}
 		writeEvent(w, `{"event":{"data":{"stdout":"aGVsbG8=","stderr":"ZXJyb3I="}}}`)
@@ -83,7 +105,7 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeEvent(w, `{"event":{"end":{"error":"secret-provider-detail"}}}`)
 			return
 		}
-		writeEvent(w, `{"event":{"end":{"exited":true,"exitCode":3}}}`)
+		writeEvent(w, `{"event":{"end":{"exited":true,"exitCode":3,"error":"exit status 3"}}}`)
 	default:
 		w.WriteHeader(404)
 	}
@@ -111,6 +133,85 @@ func TestRunStreamingResult(t *testing.T) {
 		t.Fatal(endpoint, err)
 	}
 }
+
+func TestFiniteLostPIDCleanup(t *testing.T) {
+	a := &agent{mode: "lost-finite-start"}
+	rt := adapter(t, a)
+	if _, err := rt.Run(context.Background(), deploy.Command{Script: "sleep 60"}, nil); !errors.Is(err, ErrProtocol) {
+		t.Fatal(err)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.signals != 1 || len(a.processes) != 0 {
+		t.Fatal("unconfirmed finite process was not cleaned up")
+	}
+}
+
+func TestStopFailureAndDeadline(t *testing.T) {
+	for _, mode := range []string{"signal failure", "malformed signal", "truncated signal", "poll failure", "deadline"} {
+		t.Run(mode, func(t *testing.T) {
+			lists := 0
+			var mu sync.Mutex
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				defer mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				if strings.HasSuffix(r.URL.Path, "/List") {
+					lists++
+					if mode == "poll failure" && lists > 1 {
+						w.WriteHeader(500)
+						return
+					}
+					_, _ = io.WriteString(w, `{"processes":[{"pid":42,"tag":"attempt"}]}`)
+					return
+				}
+				switch mode {
+				case "signal failure":
+					w.WriteHeader(500)
+				case "malformed signal":
+					_, _ = io.WriteString(w, "broken")
+				case "truncated signal":
+					w.Header().Set("Content-Length", "100")
+					_, _ = io.WriteString(w, "{}")
+				default:
+					_, _ = io.WriteString(w, "{}")
+				}
+			}))
+			defer server.Close()
+			rt, err := New(Options{RuntimeID: "r", BaseURL: server.URL, Endpoint: func(int) (string, error) { return "http://localhost", nil }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			timeout := time.Second
+			if mode == "deadline" {
+				timeout = 40 * time.Millisecond
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			err = rt.Stop(ctx, deploy.ProcessRef{RuntimeID: "r", ID: "42", Tag: "attempt"})
+			if mode == "deadline" {
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatal(err)
+				}
+			} else if !errors.Is(err, ErrProtocol) {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestStartRejectsPreflightWithoutOwnership(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
+	defer server.Close()
+	rt, err := New(Options{RuntimeID: "r", BaseURL: server.URL, Endpoint: func(int) (string, error) { return "http://localhost", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := rt.Start(context.Background(), deploy.Command{Tag: "attempt"}, nil)
+	if !errors.Is(err, ErrProtocol) || ref.Tag != "" {
+		t.Fatal(ref, err)
+	}
+}
 func TestStartDetachInspectAndStop(t *testing.T) {
 	a := &agent{mode: "background"}
 	rt := adapter(t, a)
@@ -123,8 +224,8 @@ func TestStartDetachInspectAndStop(t *testing.T) {
 	if state, err := rt.Inspect(context.Background(), ref); err != nil || !state.Running {
 		t.Fatal(state, err)
 	}
-	if _, err := rt.Start(context.Background(), deploy.Command{Tag: "attempt"}, nil); !errors.Is(err, deploy.ErrConflict) {
-		t.Fatal(err)
+	if rejected, err := rt.Start(context.Background(), deploy.Command{Tag: "attempt"}, nil); !errors.Is(err, deploy.ErrConflict) || rejected.Tag != "" {
+		t.Fatal(rejected, err)
 	}
 	wrong := ref
 	wrong.Tag = "stale"

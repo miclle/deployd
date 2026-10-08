@@ -57,6 +57,21 @@ func (r *Runtime) Run(ctx context.Context, command deploy.Command, output deploy
 	r.mu.Lock()
 	e := r.processes[ref.ID]
 	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		select {
+		case <-e.done:
+			// Finite commands expose no saved process reference. Release completed
+			// records so a long-lived host runtime does not retain every command.
+			if r.processes[ref.ID] == e {
+				delete(r.processes, ref.ID)
+			}
+			delete(r.tags, ref.Tag)
+		default:
+			// Keep a process whose cancellation cleanup failed available to Close.
+		}
+	}()
 	select {
 	case <-e.done:
 		r.mu.Lock()

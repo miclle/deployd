@@ -33,6 +33,14 @@ redirects and cap each response/envelope at 1 MiB. Output is not accumulated wit
 bounds. Start closes observation after PID confirmation; the agent must keep the
 process alive when the stream disconnects. No continuous log subscription is owned.
 
+The Linux agent must provide `setsid` and a POSIX shell whose `kill` supports
+negative process-group IDs. A supervisor starts the workload in its own session.
+Stop sends TERM to that supervisor, which kills/reaps its group before exiting;
+normal exit also clears remaining children. Foreground scripts must not daemonize
+or escape to another session. Finite-command failures reconcile a unique tag even
+when the initial PID response was lost. Observed nonzero exits retain their code
+without retaining the agent error string.
+
 Inspect/Stop verify runtime, PID, and tag; uncertain starts can be reconciled by a
 unique tag. Agent APIs do not provide atomic compare-and-signal fencing: callers
 must serialize actions for one execution and must never reuse an operation tag.

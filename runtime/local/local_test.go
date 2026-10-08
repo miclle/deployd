@@ -131,3 +131,17 @@ func TestLocalErrorsAndClose(t *testing.T) {
 		t.Fatal("started on closed runtime")
 	}
 }
+
+func TestCompletedFiniteCommandsReleaseRecords(t *testing.T) {
+	rt := runtimeFor(t)
+	for i := 0; i < 20; i++ {
+		if _, err := rt.Run(context.Background(), deploy.Command{Script: "true"}, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if len(rt.processes) != 0 || len(rt.tags) != 0 {
+		t.Fatal("completed finite commands retained by host runtime")
+	}
+}

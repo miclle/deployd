@@ -59,6 +59,8 @@ type ProcessState struct {
 // Runtime executes on an already provisioned POSIX environment. Start must
 // detach the workload from request cancellation after startup confirmation.
 // Run must terminate its command when cancelled; closing output is not Stop.
+// Start returns a partial reference only after attempting this execution; errors
+// rejecting existing/ambiguous state must return an empty reference.
 // Inspect and Stop must match runtime identity and the saved execution tag.
 // Endpoint returns the readiness origin, not a guarantee of public reachability.
 type Runtime interface {

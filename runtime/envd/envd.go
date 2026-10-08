@@ -5,6 +5,7 @@ package envd
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -79,7 +80,18 @@ func (r *Runtime) ID() string { return r.options.RuntimeID }
 // Run reads bounded envelopes without retaining combined command output. On
 // cancellation or protocol failure after a PID is observed it attempts Stop.
 func (r *Runtime) Run(ctx context.Context, command deploy.Command, output deploy.Output) (deploy.Exit, error) {
-	return r.execute(ctx, command, output, nil)
+	command.Tag = "deployd-command-" + rand.Text()
+	exit, err := r.execute(ctx, command, output, nil)
+	if err != nil {
+		// The request may have reached the agent even if no PID frame arrived.
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		defer cancel()
+		ref := deploy.ProcessRef{RuntimeID: r.ID(), Tag: command.Tag}
+		if cleanupErr := r.Stop(cleanup, ref); cleanupErr != nil {
+			err = errors.Join(err, deploy.ErrProcessUnknown)
+		}
+	}
+	return exit, err
 }
 
 // Start returns after a PID is confirmed and closes the observation stream.
@@ -91,17 +103,17 @@ func (r *Runtime) Start(ctx context.Context, command deploy.Command, output depl
 	ref := deploy.ProcessRef{RuntimeID: r.ID(), Tag: command.Tag}
 	state, err := r.Inspect(ctx, ref)
 	if err != nil && !errors.Is(err, deploy.ErrProcessUnknown) {
-		return ref, err
+		return deploy.ProcessRef{}, err
 	}
 	if state.Running {
-		return ref, deploy.ErrConflict
+		return deploy.ProcessRef{}, deploy.ErrConflict
 	}
 	_, err = r.execute(ctx, command, output, &ref)
 	return ref, err
 }
 
 func (r *Runtime) execute(ctx context.Context, command deploy.Command, output deploy.Output, started *deploy.ProcessRef) (exit deploy.Exit, err error) {
-	payload := map[string]any{"process": map[string]any{"cmd": "/bin/sh", "args": []string{"-c", command.Script}, "cwd": command.Directory, "envs": command.Env}, "stdin": false}
+	payload := map[string]any{"process": map[string]any{"cmd": "/bin/sh", "args": []string{"-c", supervisedScript(command.Script)}, "cwd": command.Directory, "envs": command.Env}, "stdin": false}
 	if command.Tag != "" {
 		payload["tag"] = command.Tag
 	}
@@ -166,7 +178,9 @@ func (r *Runtime) execute(ctx context.Context, command deploy.Command, output de
 			if started != nil {
 				return exit, deploy.ErrProcessExited
 			}
-			if !event.End.Exited || event.End.Error != "" {
+			// envd also includes an error string for an observed nonzero exit. Its
+			// terminal flag/code carry the result; never retain the raw error text.
+			if !event.End.Exited {
 				return exit, ErrProtocol
 			}
 			return deploy.Exit{Code: event.End.ExitCode}, nil
@@ -285,7 +299,9 @@ func (r *Runtime) find(ctx context.Context, ref deploy.ProcessRef) (processInfo,
 	return found, nil
 }
 func (r *Runtime) signal(ctx context.Context, pid uint32) error {
-	resp, err := r.call(ctx, "SendSignal", map[string]any{"process": map[string]any{"pid": pid}, "signal": "SIGNAL_SIGKILL"}, false)
+	// TERM lets our supervisor kill and reap its owned process group. Killing only
+	// the supervisor with KILL would leave its children running.
+	resp, err := r.call(ctx, "SendSignal", map[string]any{"process": map[string]any{"pid": pid}, "signal": "SIGNAL_SIGTERM"}, false)
 	if err != nil {
 		return err
 	}
@@ -295,6 +311,17 @@ func (r *Runtime) signal(ctx context.Context, pid uint32) error {
 		return ErrProtocol
 	}
 	return nil
+}
+
+func supervisedScript(script string) string {
+	// setsid runs the workload in a new session whose group ID is the child PID.
+	// The foreground supervisor retains that PID until cleanup finishes. Scripts
+	// must remain in the foreground and must not escape into another session.
+	return "command -v setsid >/dev/null 2>&1 || exit 127\n" +
+		"child=\ncleanup() { child=${child:-$!}; if [ -n \"$child\" ]; then kill -KILL -- \"-$child\" 2>/dev/null || :; wait \"$child\" 2>/dev/null || :; fi; }\n" +
+		"trap cleanup 0\ntrap 'exit 143' TERM\ntrap 'exit 130' INT\ntrap 'exit 129' HUP\n" +
+		"setsid /bin/sh -c '" + strings.ReplaceAll(script, "'", "'\"'\"'") + "' &\n" +
+		"child=$!\nwait \"$child\"\nstatus=$?\nexit \"$status\""
 }
 func (r *Runtime) call(ctx context.Context, method string, payload any, stream bool) (*http.Response, error) {
 	data, err := json.Marshal(payload)

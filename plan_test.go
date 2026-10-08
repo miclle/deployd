@@ -40,7 +40,7 @@ func TestPrepareAndRestore(t *testing.T) {
 	if p.Config().Port != 3000 {
 		t.Fatal("plan changed through returned config")
 	}
-	restored, err := Restore(snapshot, []byte(validConfig))
+	restored, err := Restore(snapshot, p.ConfigBytes())
 	if err != nil || restored.Snapshot() != snapshot {
 		t.Fatalf("restore: %v", err)
 	}
@@ -51,8 +51,13 @@ func TestPrepareAndRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	data[0] = 'X'
-	if q.Config().Version != 1 {
+	if q.Config().Version != 1 || string(q.ConfigBytes()) != validConfig {
 		t.Fatal("plan retains mutable input")
+	}
+	returned := q.ConfigBytes()
+	returned[0] = 'Y'
+	if string(q.ConfigBytes()) != validConfig {
+		t.Fatal("plan changed through returned bytes")
 	}
 }
 

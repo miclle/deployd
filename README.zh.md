@@ -56,7 +56,8 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 
 ```sh
 make check
-make coverage
 ```
 
-`make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器至少 90%。CI 在 Go 1.25、1.26 和 1.27 上执行同一门槛，固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。
+`make` 默认运行 `make check`，包含依赖文件一致性检查、lint，以及带覆盖率门槛的 race 测试。可通过 `make gomod`、`make fmt-check`、`make lint`、`make test` 或 `make coverage` 单独执行各项检查。`make fmt` 直接格式化 Go 文件。
+
+`make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器至少 90%。CI 在 Linux 的 Go 1.25、1.26 和 1.27 以及 macOS 的 Go 1.27 上执行同一门槛，在 Go 1.25 上检查依赖文件一致性，并固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。

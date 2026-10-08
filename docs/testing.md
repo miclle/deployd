@@ -4,13 +4,44 @@
 
 ## Required checks
 
-`make lint` checks gofmt, errcheck, govet, ineffassign, staticcheck, and unused code.
-`make test` runs race detection without cached results. `make coverage` emits
+Run `make` or `make check` for dependency-file consistency, lint, and race tests
+with the same coverage gate as CI. Individual targets are also available:
+
+| Target | Purpose |
+| --- | --- |
+| `make fmt` | Format Go source files in place |
+| `make fmt-check` | Check Go formatting without modifying files |
+| `make gomod` | Run `go mod tidy -diff` without modifying dependency files |
+| `make lint` | Validate linter configuration and check formatting, errcheck, govet, ineffassign, staticcheck, and unused code |
+| `make test` | Run race tests without cached results |
+| `make coverage` | Run race tests and enforce per-package statement coverage |
+
+`make coverage` emits
 `coverage.out` (ignored by Git), per-function coverage, and a per-package gate:
 core at least 95%, each adapter and internal helper package at least 90%. All three
-CI Go versions (1.25, 1.26, and 1.27) enforce this gate.
+CI Go versions (1.25, 1.26, and 1.27) enforce this gate on Linux; macOS also runs
+the gate on Go 1.27, including Darwin-specific process cleanup tests. CI sets
+`GOTOOLCHAIN=local` so an incompatible dependency fails instead of silently
+switching to a newer Go toolchain. A separate Go 1.25 job runs `make gomod`
+to check dependency-file consistency on the minimum supported Go version.
+CI reuses `make lint` and `make coverage` for its other checks.
+
+Local Make tasks also default to `GOTOOLCHAIN=local`; tests and dependency checks
+use the installed Go version. Select an explicit toolchain to reproduce another
+CI Go version, for example `GOTOOLCHAIN=go1.25.6 make gomod` or
+`GOTOOLCHAIN=go1.25.6 make coverage`. The CI operating-system and Go-version matrix
+is selected by the workflow; local tasks run on the host platform.
+
+Checks run on pushes, pull requests, and manual dispatch. A newer run cancels
+older runs for the same event and pull request or ref. Linux matrix jobs do not
+cancel each other on failure. Test jobs have a 20-minute limit, lint a 10-minute
+limit, and dependency checks a 5-minute limit. Checkout and Go setup actions are
+pinned to release commit SHAs.
+
 `make lint` sets `GOTOOLCHAIN=go1.26.6` for golangci-lint, matching the Go minor
-version used by the CI lint job. This avoids loading a newer local standard library
+version used by the CI lint job. CI installs its pinned linter and runs
+`make lint LINT_GOTOOLCHAIN=local` to use the Go 1.26 toolchain it has already set
+up. This avoids loading a newer local standard library
 that the linter cannot parse. The Go command downloads this toolchain on first use
 if needed; offline environments must install it beforehand. Override the selection
 with `LINT_GOTOOLCHAIN`, for example `make lint LINT_GOTOOLCHAIN=go1.26.6`.
@@ -36,7 +67,7 @@ The complete Go example is compile-checked; its placeholder repository is not
 contacted during tests. Integration tests start a child copy of the Go test binary
 as the HTTP service, so Node.js/Python are not runtime prerequisites. Git, `/bin/sh`,
 `realpath`, and `sha256sum` or `shasum` must be available. Linux/macOS are the local
-execution platforms; the CI matrix exercises Linux.
+execution platforms; CI exercises both.
 
 Supervisor tests exercise `/bin/sh` and explicitly exercise dash when installed,
 including on macOS. Linux uses the native `setsid` utility; macOS uses a shim

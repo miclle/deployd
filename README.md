@@ -80,10 +80,14 @@ integration tests.
 
 ```sh
 make check
-make coverage
 ```
 
+`make` defaults to `make check`: dependency-file consistency, lint, and race tests
+with coverage gates. Use `make gomod`, `make fmt-check`, `make lint`, `make test`,
+or `make coverage` to run individual checks. `make fmt` formats Go files in place.
+
 `make coverage` runs race tests and enforces at least 95% statement coverage for the
-core package and 90% for each adapter. CI runs that gate on Go 1.25, 1.26, and 1.27, and
+core package and 90% for each adapter. CI runs that gate on Go 1.25, 1.26, and 1.27
+on Linux and Go 1.27 on macOS, checks dependency-file consistency on Go 1.25, and
 pins golangci-lint to 2.14.0. See [testing](docs/testing.md) for the coverage matrix
 and the distinction between local integration and live remote acceptance.

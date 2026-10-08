@@ -44,6 +44,10 @@ stop. Deployment workspaces remain for diagnosis; the caller owns their retentio
 
 ## Evidence and limits
 
+The opt-in acceptance suites are implemented; acceptance against a live isolated
+envd target remains pending. Run both suites against a configured target and
+record the evidence below before marking remote acceptance complete.
+
 Record test date, agent version, user, source commit, exit status and cleanup result
 without secrets or repository output. Default CI proves local/protocol contracts
 and compiles these tests; a skipped live test is **not remote acceptance**.

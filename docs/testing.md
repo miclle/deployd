@@ -7,7 +7,8 @@
 `make lint` checks gofmt, errcheck, govet, ineffassign, staticcheck, and unused code.
 `make test` runs race detection without cached results. `make coverage` emits
 `coverage.out` (ignored by Git), per-function coverage, and a per-package gate:
-core at least 95%, each adapter at least 90%. Both CI Go versions enforce this gate.
+core at least 95%, each adapter at least 90%. All three CI Go versions (1.25, 1.26,
+and 1.27) enforce this gate.
 If a newer local Go toolchain exceeds the linter's build version, choose a compatible
 `GOTOOLCHAIN` or install a compatible linter; never silently skip lint.
 

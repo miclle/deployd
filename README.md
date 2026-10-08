@@ -80,6 +80,6 @@ make coverage
 ```
 
 `make coverage` runs race tests and enforces at least 95% statement coverage for the
-core package and 90% for each adapter. CI runs that gate on Go 1.25 and 1.26, and
+core package and 90% for each adapter. CI runs that gate on Go 1.25, 1.26, and 1.27, and
 pins golangci-lint to 2.14.0. See [testing](docs/testing.md) for the coverage matrix
 and the distinction between local integration and live remote acceptance.

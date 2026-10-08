@@ -4,7 +4,7 @@
 
 ## 必需检查
 
-`make lint` 检查 gofmt、errcheck、govet、ineffassign、staticcheck 和 unused。`make test` 不使用缓存并运行 race 检测。`make coverage` 输出 Git 忽略的 `coverage.out`、函数覆盖率，并检查每个包：核心至少 95%，每个适配器至少 90%。CI 的两个 Go 版本都执行该门槛。
+`make lint` 检查 gofmt、errcheck、govet、ineffassign、staticcheck 和 unused。`make test` 不使用缓存并运行 race 检测。`make coverage` 输出 Git 忽略的 `coverage.out`、函数覆盖率，并检查每个包：核心至少 95%，每个适配器至少 90%。CI 的三个 Go 版本（1.25、1.26 和 1.27）都执行该门槛。
 
 本地 Go 工具链若新于 linter 的编译版本，应选择兼容的 `GOTOOLCHAIN` 或安装兼容 linter，不得跳过 lint。
 

@@ -71,9 +71,12 @@ own log subscription lifetimes and storage.
 
 ## Development
 
-Install golangci-lint 2.13 or newer, compiled with a Go version compatible with your
-toolchain. Git and POSIX tools described in [adapters](docs/adapters.md) are required
-for integration tests.
+Install golangci-lint 2.13 or newer, compiled with Go 1.26.6 or newer.
+`make lint` selects Go 1.26.6 independently of your default Go toolchain; Go downloads
+it on first use if needed. Override it with `make lint LINT_GOTOOLCHAIN=go1.26.6`
+when changing the lint toolchain, using a version supported by your linter.
+Git and POSIX tools described in [adapters](docs/adapters.md) are required for
+integration tests.
 
 ```sh
 make check

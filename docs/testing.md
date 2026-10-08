@@ -9,8 +9,15 @@
 `coverage.out` (ignored by Git), per-function coverage, and a per-package gate:
 core at least 95%, each adapter and internal helper package at least 90%. All three
 CI Go versions (1.25, 1.26, and 1.27) enforce this gate.
-If a newer local Go toolchain exceeds the linter's build version, choose a compatible
-`GOTOOLCHAIN` or install a compatible linter; never silently skip lint.
+`make lint` sets `GOTOOLCHAIN=go1.26.6` for golangci-lint, matching the Go minor
+version used by the CI lint job. This avoids loading a newer local standard library
+that the linter cannot parse. The Go command downloads this toolchain on first use
+if needed; offline environments must install it beforehand. Override the selection
+with `LINT_GOTOOLCHAIN`, for example `make lint LINT_GOTOOLCHAIN=go1.26.6`.
+The linter must support the selected Go version and be built with at least that
+version; check `golangci-lint version`. Setting only `.golangci.yml`'s Go version
+does not select the toolchain used to load packages. Tests and coverage continue
+to use your default Go toolchain; lint is never skipped.
 
 ## Coverage matrix
 

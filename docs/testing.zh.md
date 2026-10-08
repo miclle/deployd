@@ -6,7 +6,7 @@
 
 `make lint` 检查 gofmt、errcheck、govet、ineffassign、staticcheck 和 unused。`make test` 不使用缓存并运行 race 检测。`make coverage` 输出 Git 忽略的 `coverage.out`、函数覆盖率，并检查每个包：核心至少 95%，每个适配器及内部辅助包至少 90%。CI 的三个 Go 版本（1.25、1.26 和 1.27）都执行该门槛。
 
-本地 Go 工具链若新于 linter 的编译版本，应选择兼容的 `GOTOOLCHAIN` 或安装兼容 linter，不得跳过 lint。
+`make lint` 为 golangci-lint 设置 `GOTOOLCHAIN=go1.26.6`，与 CI lint 任务使用相同的 Go 次版本，避免加载 linter 无法解析的新版本地标准库。首次使用时，Go 命令会按需下载该工具链；离线环境需要提前安装。可通过 `LINT_GOTOOLCHAIN` 覆盖，例如 `make lint LINT_GOTOOLCHAIN=go1.26.6`。linter 必须支持所选 Go 版本，且编译所用版本不得低于该版本，可通过 `golangci-lint version` 检查。仅设置 `.golangci.yml` 中的 Go 版本不会选择加载包时使用的工具链。测试与覆盖率继续使用默认 Go 工具链，lint 不会被跳过。
 
 ## 覆盖矩阵
 

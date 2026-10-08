@@ -52,7 +52,7 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 
 ## 开发
 
-安装 golangci-lint 2.13 或更新版本，其编译所用 Go 版本必须与当前工具链兼容。集成测试需要 Git 和[适配器文档](docs/adapters.zh.md)中的 POSIX 工具。
+安装 golangci-lint 2.13 或更新版本，其编译所用 Go 版本应为 1.26.6 或更新版本。`make lint` 独立于默认 Go 工具链选择 Go 1.26.6；首次使用时，Go 会按需下载。需要更换 lint 工具链时，可通过 `make lint LINT_GOTOOLCHAIN=go1.26.6` 覆盖，但应选择 linter 支持的版本。集成测试需要 Git 和[适配器文档](docs/adapters.zh.md)中的 POSIX 工具。
 
 ```sh
 make check

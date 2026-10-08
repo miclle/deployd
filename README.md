@@ -28,7 +28,8 @@ spec := deploy.Spec{
 }
 ```
 
-The execution flow is:
+`Prepare` validates the parameters and resolves the source once; `Apply` checks out
+the saved commit and executes the plan in the supplied runtime:
 
 ```go
 source, err := gitsource.New(repositoryURL, gitsource.Options{Ref: "main"})
@@ -45,8 +46,10 @@ result, err := deploy.Apply(ctx, source, runtime, plan, deploy.Options{
 err = deploy.Stop(cleanupCtx, runtime, result.Process)
 ```
 
-Use a bounded cleanup context and handle every error. See the [complete, compiled
-Go example](example_test.go), [controller takeover](docs/architecture.md#controller-takeover),
+Use an absolute, dedicated, caller-owned `WorkRoot`. Keep the runtime alive for the
+service lifetime: closing a local runtime stops all of its owned processes.
+Use a bounded cleanup context and handle every error. See the [complete,
+compile-checked Go example](example_test.go),
 [execution architecture](docs/architecture.md),
 [controller integration](docs/controller-integration.md), [execution parameters](docs/configuration.md), and [adapters](docs/adapters.md).
 The Git adapter, local process runtime, and envd Process runtime are separate
@@ -55,25 +58,36 @@ packages; callers can also implement `Source` and `Runtime`.
 For repository configuration, resolve the commit first, read the application's
 configuration at that exact commit, then call `deploy.NewPlan(resolved, spec)`.
 Persist the normalized Spec and Snapshot; `deploy.Restore(snapshot, spec)` requires
-no original configuration bytes. See the [migration notes](docs/controller-integration.md)
-for the breaking change from the previous YAML-based API.
+no original configuration bytes and does not resolve the source again. Saved Spec
+values contain commands; protect their storage and keep them out of lifecycle
+events. See the [planning and persistence examples](plan_example_test.go) and
+[migration notes](docs/controller-integration.md) for the breaking change from the
+previous YAML-based API and persistence format.
 
 ## Ownership
 
 Applications own configuration formats/parsing, authentication, resource
 provisioning, task scheduling, durable state, concurrency, retry decisions, quotas,
-expiration, ingress, and resource destruction. The library owns immutable source/execution-parameter evidence and the
-execution protocol. A deployment stop terminates the application process while
+expiration, ingress, and resource destruction. The library owns immutable
+source/execution-parameter evidence and the execution protocol.
+A deployment stop terminates the application process while
 retaining its workspace and runtime. Scripts execute trusted repository code in
 the target account; choose isolation appropriate for that code.
 
 Each attempt uses a fresh workspace and unique operation ID. Scripts are never
 retried automatically. Failed starts/probes attempt bounded process cleanup and
 return partial evidence, including uncertain starts. Readiness is a point-in-time
-2xx HTTP response with a running process, rather than a continuous health promise.
+2xx HTTP response with a running process; redirects are not followed. It does not
+prove public ingress or continuously monitor health.
 Output callbacks receive bounded, redacted stage output. Optional live execution
 output and envd log attachment are described in [logs](docs/logs.md); applications
 own log subscription lifetimes and storage.
+
+For controller takeover, persist `Options.OnCheckpoint` evidence before returning
+from the callback, then reconcile the saved process under exclusive ownership.
+`Restore` restores a plan, not an execution cursor; it does not make replay safe.
+See [controller takeover](docs/architecture.md#controller-takeover) and the
+[compile-checked recovery examples](recovery_example_test.go).
 
 ## Development
 
@@ -93,7 +107,8 @@ with coverage gates. Use `make gomod`, `make fmt-check`, `make lint`, `make test
 or `make coverage` to run individual checks. `make fmt` formats Go files in place.
 
 `make coverage` runs race tests and enforces at least 95% statement coverage for the
-core package and 90% for each adapter. CI runs that gate on Go 1.25, 1.26, and 1.27
+core package and 90% for each adapter and internal helper package. CI runs that
+gate on Go 1.25, 1.26, and 1.27
 on Linux and Go 1.27 on macOS, checks dependency-file consistency on Go 1.25, and
 pins golangci-lint to 2.14.0. See [testing](docs/testing.md) for the coverage matrix
 and the distinction between local integration and live remote acceptance.

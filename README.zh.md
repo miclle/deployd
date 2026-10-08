@@ -24,7 +24,7 @@ spec := deploy.Spec{
 }
 ```
 
-执行流程如下：
+`Prepare` 校验参数并解析一次源码；`Apply` 在提供的运行时中检出已保存的提交并执行计划：
 
 ```go
 source, err := gitsource.New(repositoryURL, gitsource.Options{Ref: "main"})
@@ -41,15 +41,17 @@ result, err := deploy.Apply(ctx, source, runtime, plan, deploy.Options{
 err = deploy.Stop(cleanupCtx, runtime, result.Process)
 ```
 
-清理时使用有期限的 context，并处理所有错误。参考[可编译的完整 Go 示例](example_test.go)、[控制器接管](docs/architecture.zh.md#控制器接管)、[执行架构](docs/architecture.zh.md)、[控制器集成](docs/controller-integration.zh.md)、[执行参数](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
+`WorkRoot` 必须是调用方专用且拥有的绝对路径。在服务运行期间保持运行时可用：关闭本地运行时会停止它拥有的全部进程。清理时使用有期限的 context，并处理所有错误。参考[经过编译检查的完整 Go 示例](example_test.go)、[执行架构](docs/architecture.zh.md)、[控制器集成](docs/controller-integration.zh.md)、[执行参数](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
 
-使用仓库配置时，先解析提交，再从该精确提交读取业务配置，随后调用 `deploy.NewPlan(resolved, spec)`。保存规范化 Spec 与 Snapshot，`deploy.Restore(snapshot, spec)` 无需原始配置字节。从此前 YAML 接口迁移的破坏性变更参见[迁移说明](docs/controller-integration.zh.md)。
+使用仓库配置时，先解析提交，再从该精确提交读取业务配置，随后调用 `deploy.NewPlan(resolved, spec)`。保存规范化 Spec 与 Snapshot，`deploy.Restore(snapshot, spec)` 无需原始配置字节，也不会再次解析源码。保存的 Spec 包含命令，应保护其存储，避免写入生命周期事件。参考[计划与持久化示例](plan_example_test.go)；从此前 YAML 接口与持久化格式迁移的破坏性变更参见[迁移说明](docs/controller-integration.zh.md)。
 
 ## 职责
 
 应用负责配置格式与解析、鉴权、资源创建、任务调度、持久化、并发控制、重试决策、配额、到期、入口和资源销毁。库负责不可变源码与执行参数证据及执行协议。停止部署只终止应用进程，保留工作目录和运行环境。脚本以目标账号执行受信任的仓库代码，应按代码的可信程度选择隔离方式。
 
-每次尝试使用新工作目录和唯一操作标识，不自动重试脚本。启动或探测失败会尝试有时限的进程清理，并返回包含不确定启动信息的部分结果。就绪证据是进程存活时获得的一次 HTTP 2xx 响应，不代表持续健康。输出回调提供有界、脱敏的阶段输出；[日志文档](docs/logs.zh.md)说明可选实时执行输出与 envd 日志附着。订阅生命周期和存储由集成方负责。
+每次尝试使用新工作目录和唯一操作标识，不自动重试脚本。启动或探测失败会尝试有时限的进程清理，并返回包含不确定启动信息的部分结果。就绪证据是进程存活时获得的一次 HTTP 2xx 响应，不跟随重定向；它不证明公网入口可用，也不会持续监测健康。输出回调提供有界、脱敏的阶段输出；[日志文档](docs/logs.zh.md)说明可选实时执行输出与 envd 日志附着。订阅生命周期和存储由集成方负责。
+
+控制器接管需要在 `Options.OnCheckpoint` 回调返回前持久化证据，然后在独占所有权下核对并协调已保存的进程。`Restore` 恢复的是计划，不是执行进度，也不保证重新执行安全。参考[控制器接管](docs/architecture.zh.md#控制器接管)和[经过编译检查的恢复示例](recovery_example_test.go)。
 
 ## 开发
 
@@ -61,4 +63,4 @@ make check
 
 `make` 默认运行 `make check`，包含依赖文件一致性检查、lint，以及带覆盖率门槛的 race 测试。可通过 `make gomod`、`make fmt-check`、`make lint`、`make test` 或 `make coverage` 单独执行各项检查。`make fmt` 直接格式化 Go 文件。
 
-`make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器至少 90%。CI 在 Linux 的 Go 1.25、1.26 和 1.27 以及 macOS 的 Go 1.27 上执行同一门槛，在 Go 1.25 上检查依赖文件一致性，并固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。
+`make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器及内部辅助包至少 90%。CI 在 Linux 的 Go 1.25、1.26 和 1.27 以及 macOS 的 Go 1.27 上执行同一门槛，在 Go 1.25 上检查依赖文件一致性，并固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。

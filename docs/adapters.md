@@ -34,7 +34,8 @@ bounds. Start closes observation after PID confirmation; the agent must keep the
 process alive when the stream disconnects. No continuous log subscription is owned.
 
 The Linux agent must provide `setsid` and a POSIX shell whose `kill` supports
-negative process-group IDs. A supervisor starts the workload in its own session.
+negative process-group IDs. Group cleanup uses `kill -s KILL -- -PGID`, compatible
+with dash and bash. A supervisor starts the workload in its own session.
 Stop sends TERM to that supervisor, which kills/reaps its group before exiting;
 normal exit also clears remaining children. Foreground scripts must not daemonize
 or escape to another session. Finite-command failures reconcile a unique tag even

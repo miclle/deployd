@@ -317,8 +317,9 @@ func supervisedScript(script string) string {
 	// setsid runs the workload in a new session whose group ID is the child PID.
 	// The foreground supervisor retains that PID until cleanup finishes. Scripts
 	// must remain in the foreground and must not escape into another session.
+	// The -s form permits -- before a negative group ID in both dash and bash.
 	return "command -v setsid >/dev/null 2>&1 || exit 127\n" +
-		"child=\ncleanup() { child=${child:-$!}; if [ -n \"$child\" ]; then kill -KILL -- \"-$child\" 2>/dev/null || :; wait \"$child\" 2>/dev/null || :; fi; }\n" +
+		"child=\ncleanup() { child=${child:-$!}; if [ -n \"$child\" ]; then kill -s KILL -- \"-$child\" 2>/dev/null || :; wait \"$child\" 2>/dev/null || :; fi; }\n" +
 		"trap cleanup 0\ntrap 'exit 143' TERM\ntrap 'exit 130' INT\ntrap 'exit 129' HUP\n" +
 		"setsid /bin/sh -c '" + strings.ReplaceAll(script, "'", "'\"'\"'") + "' &\n" +
 		"child=$!\nwait \"$child\"\nstatus=$?\nexit \"$status\""

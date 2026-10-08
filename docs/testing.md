@@ -30,6 +30,12 @@ as the HTTP service, so Node.js/Python are not runtime prerequisites. Git, `/bin
 `realpath`, and `sha256sum` or `shasum` must be available. Linux/macOS are the local
 execution platforms; the CI matrix exercises Linux.
 
+Supervisor tests exercise `/bin/sh` and explicitly exercise dash when installed,
+including on macOS. Linux uses the native `setsid` utility; macOS uses a shim
+that calls the actual session syscall and exec. Tests verify normal-exit and TERM
+child-group cleanup; test failure cleanup also kills its isolated group and bounds
+output-pipe waits.
+
 Protocol fixtures prove the adapter contract only. Live envd acceptance still needs
 an existing isolated target: verify source authentication, stream-disconnect process
 survival, endpoint routing, exact-tag stop, cancellation cleanup, and target account

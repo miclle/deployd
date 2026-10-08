@@ -19,7 +19,7 @@ pass `make coverage` (core >=95%, every adapter/helper >=90%). Commits remain lo
 | --- | --- | --- |
 | 1 | Acknowledged execution checkpoints containing start intent and partial result; immutable callback copies; failure/cancellation tests; compiled controller recovery example | Complete |
 | 2 | Compiled exact-byte plan persistence/restore example, shared protocol fixtures, migration notes covering original YAML, stable repository identity, strict 2xx readiness and caller-owned Host injection | Complete |
-| 3 | Opt-in acceptance tests against an existing isolated envd; credentials from environment only; detached lifetime, reconstructed adapter, exact-tag stop and finite cancellation; remote limitations documented | Pending |
+| 3 | Opt-in acceptance tests against an existing isolated envd; credentials from environment only; detached lifetime, reconstructed adapter, exact-tag stop and finite cancellation; remote limitations documented | Implemented; live target pending |
 | 4 | Typed command exit errors and safe Git error categories without stderr parsing or automatic retry claims; failure-path tests and error handling docs | Pending |
 | 5 | Optional bounded live output subscription with cross-chunk redaction; adapter-level log attachment separate from Start/Stop; cancellation and failure tests | Pending |
 
@@ -43,3 +43,5 @@ Phase 1: compatible-toolchain lint and full race coverage passed; core 98.8%,
 envd 94.9%, local 95.6%, Git 96.6%, redaction 100%.
 
 Phase 2: compatible-toolchain lint and core race tests passed; reusable protocol fixtures and runnable exact-byte restore example passed.
+
+Phase 3: compatible-toolchain lint and full race coverage passed. Live tests compile and skip without opt-in; no isolated agent is configured in this shell, so remote acceptance remains unverified.

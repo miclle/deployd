@@ -41,3 +41,6 @@ Protocol fixtures prove the adapter contract only. Live envd acceptance still ne
 an existing isolated target: verify source authentication, stream-disconnect process
 survival, endpoint routing, exact-tag stop, cancellation cleanup, and target account
 permissions. No automated test provisions or destroys remote resources.
+
+See [live envd acceptance](envd-acceptance.md) for explicit opt-in, environment
+configuration, process/reconstruction tests and pinned deployment verification.

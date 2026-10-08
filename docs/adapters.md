@@ -55,3 +55,6 @@ Inspect/Stop verify runtime, PID, and tag; uncertain starts can be reconciled by
 unique tag. Agent APIs do not provide atomic compare-and-signal fencing: callers
 must serialize actions for one execution and must never reuse an operation tag.
 No direct SSH adapter or infrastructure provisioning is included.
+
+Run the [opt-in acceptance suite](envd-acceptance.md) before relying on a new agent
+version. Default tests do not contact a remote target.

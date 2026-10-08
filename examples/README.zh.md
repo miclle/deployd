@@ -33,7 +33,7 @@ curl http://127.0.0.1:8080/health
 
 | 文件 | 内容 | 默认验证方式 |
 | --- | --- | --- |
-| [example_test.go](../example_test.go) | Prepare、Apply 和 Stop | 仅编译，使用占位仓库 |
+| [apply_example_test.go](../apply_example_test.go) | Prepare、Apply 和 Stop | 仅编译，使用占位仓库 |
 | [plan_example_test.go](../plan_example_test.go) | NewPlan 和 Restore | 执行并检查输出 |
 | [recovery_example_test.go](../recovery_example_test.go) | 检查点持久化与进程核对 | 仅编译，使用占位 agent |
 | [logs_example_test.go](../logs_example_test.go) | 有界脱敏的 FollowLogs 输出 | 仅编译，使用占位 agent |

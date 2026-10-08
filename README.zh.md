@@ -43,7 +43,7 @@ result, err := deploy.Apply(ctx, source, runtime, plan, deploy.Options{
 err = deploy.Stop(cleanupCtx, runtime, result.Process)
 ```
 
-`WorkRoot` 必须是调用方专用且拥有的绝对路径。在服务运行期间保持运行时可用：关闭本地运行时会停止它拥有的全部进程。清理时使用有期限的 context，并处理所有错误。参考[经过编译检查的完整 Go 示例](example_test.go)、[执行架构](docs/architecture.zh.md)、[控制器集成](docs/controller-integration.zh.md)、[执行参数](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
+`WorkRoot` 必须是调用方专用且拥有的绝对路径。在服务运行期间保持运行时可用：关闭本地运行时会停止它拥有的全部进程。清理时使用有期限的 context，并处理所有错误。参考[经过编译检查的完整 Go 示例](apply_example_test.go)、[执行架构](docs/architecture.zh.md)、[控制器集成](docs/controller-integration.zh.md)、[执行参数](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
 
 使用仓库配置时，先解析提交，再从该精确提交读取业务配置，随后调用 `deploy.NewPlan(resolved, spec)`。保存规范化 Spec 与 Snapshot，`deploy.Restore(snapshot, spec)` 无需原始配置字节，也不会再次解析源码。保存的 Spec 包含命令，应保护其存储，避免写入生命周期事件。参考[计划与持久化示例](plan_example_test.go)；从此前 YAML 接口与持久化格式迁移的破坏性变更参见[迁移说明](docs/controller-integration.zh.md)。
 

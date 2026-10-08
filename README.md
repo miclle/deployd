@@ -54,7 +54,7 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 Use an absolute, dedicated, caller-owned `WorkRoot`. Keep the runtime alive for the
 service lifetime: closing a local runtime stops all of its owned processes.
 Use a bounded cleanup context and handle every error. See the [complete,
-compile-checked Go example](example_test.go),
+compile-checked Go example](apply_example_test.go),
 [execution architecture](docs/architecture.md),
 [controller integration](docs/controller-integration.md), [execution parameters](docs/configuration.md), and [adapters](docs/adapters.md).
 The Git adapter, local process runtime, and envd Process runtime are separate

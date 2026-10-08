@@ -50,7 +50,7 @@ Small Go API examples remain beside the package they document:
 
 | File | Topic | Default verification |
 | --- | --- | --- |
-| [example_test.go](../example_test.go) | Prepare, Apply, and Stop | Compile only; uses a placeholder repository |
+| [apply_example_test.go](../apply_example_test.go) | Prepare, Apply, and Stop | Compile only; uses a placeholder repository |
 | [plan_example_test.go](../plan_example_test.go) | NewPlan and Restore | Execute and check output |
 | [recovery_example_test.go](../recovery_example_test.go) | Checkpoint persistence and process reconciliation | Compile only; uses a placeholder agent |
 | [logs_example_test.go](../logs_example_test.go) | FollowLogs with bounded, redacted output | Compile only; uses a placeholder agent |

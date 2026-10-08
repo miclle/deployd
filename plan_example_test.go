@@ -15,7 +15,7 @@ func ExampleRestore() {
 	data := []byte("# pinned repository config\nversion: 1\ninstallCommand: npm ci\nstartCommand: npm start\nport: 3000\n")
 	snapshot := deploy.Snapshot{
 		SourceID: "https://example.com/service.git", CommitSHA: strings.Repeat("a", 40),
-		ConfigPath: ".qiniu/deploy.yaml", ConfigHash: fmt.Sprintf("sha256:%x", sha256.Sum256(data)),
+		ConfigPath: ".deploy/deploy.yaml", ConfigHash: fmt.Sprintf("sha256:%x", sha256.Sum256(data)),
 	}
 	// JSON encodes []byte as base64 and preserves the original YAML bytes.
 	type record struct {

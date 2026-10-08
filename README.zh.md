@@ -12,6 +12,8 @@ deployd 是一个面向已有运行环境的 Go 部署执行内核：将固定 G
 go get github.com/miclle/deployd
 ```
 
+在本项目工作区运行 `go run ./examples/local`，即可体验完整的本地部署。随附的 Go HTTP 服务无需外部仓库或凭证。运行条件、端口选择和清理方式参见[示例说明](examples/README.zh.md)。
+
 应用自行从文件、数据库、API 等来源读取业务配置，并映射为执行参数：
 
 ```go
@@ -61,6 +63,6 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 make check
 ```
 
-`make` 默认运行 `make check`，包含依赖文件一致性检查、lint，以及带覆盖率门槛的 race 测试。可通过 `make gomod`、`make fmt-check`、`make lint`、`make test` 或 `make coverage` 单独执行各项检查。`make fmt` 直接格式化 Go 文件。
+`make` 默认运行 `make check`，包含依赖文件一致性检查、lint，以及带覆盖率门槛的 race 测试。可通过 `make gomod`、`make fmt-check`、`make lint`、`make test` 或 `make coverage` 单独执行各项检查。`make examples` 编译可运行示例，不执行它们。`make fmt` 直接格式化 Go 文件。
 
-`make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器及内部辅助包至少 90%。CI 在 Linux 的 Go 1.25、1.26 和 1.27 以及 macOS 的 Go 1.27 上执行同一门槛，在 Go 1.25 上检查依赖文件一致性，并固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。
+`make coverage` 先编译可运行示例，再运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器及内部辅助包至少 90%；示例程序不参与覆盖率门槛。CI 在 Linux 的 Go 1.25、1.26 和 1.27 以及 macOS 的 Go 1.27 上执行同一门槛，在 Go 1.25 上检查依赖文件一致性，并固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。

@@ -14,6 +14,7 @@ with the same coverage gate as CI. Individual targets are also available:
 | `make gomod` | Run `go mod tidy -diff` without modifying dependency files |
 | `make lint` | Validate linter configuration and check formatting, errcheck, govet, ineffassign, staticcheck, and unused code |
 | `make test` | Run race tests without cached results |
+| `make examples` | Compile runnable example programs without executing them |
 | `make coverage` | Run race tests and enforce per-package statement coverage |
 
 `make coverage` emits
@@ -25,6 +26,11 @@ the gate on Go 1.27, including Darwin-specific process cleanup tests. CI sets
 switching to a newer Go toolchain. A separate Go 1.25 job runs `make gomod`
 to check dependency-file consistency on the minimum supported Go version.
 CI reuses `make lint` and `make coverage` for its other checks.
+
+`make coverage` first runs `make examples`. Example programs remain in the same
+module and are included in lint and test package discovery, but `examples/`
+packages are excluded from the library coverage gate. No separate module or
+external dependencies are needed for the local demo.
 
 Local Make tasks also default to `GOTOOLCHAIN=local`; tests and dependency checks
 use the installed Go version. Select an explicit toolchain to reproduce another
@@ -63,8 +69,12 @@ to use your default Go toolchain; lint is never skipped.
 | envd runtime | HTTP protocol fixtures, stream framing, authentication, PID/exit events, inspection/signals, stale and ambiguous tags, missing/malformed/oversized responses, redirects, lost-PID cleanup, reused-PID stream failures, stop deadlines, real supervisor/child cleanup before and after session creation |
 | End to end | Real Git + HTTP service: fixed commit, install artifact, readiness, duplicate attempt, stop, health failure cleanup, cancellation after start, no configuration file, directory symlink confinement before and after installation |
 
-The complete Go example is compile-checked; its placeholder repository is not
-contacted during tests. Integration tests start a child copy of the Go test binary
+The API examples are compile-checked; their placeholder repositories and agents
+are not contacted during tests. NewPlan/Restore examples also execute and verify
+their output. The [runnable local example](../examples/README.md) uses a bundled
+Go service and a temporary local Git repository; run it explicitly to verify
+deployment, HTTP readiness, and signal-driven cleanup. Default checks compile it
+without starting the service. Integration tests start a child copy of the Go test binary
 as the HTTP service, so Node.js/Python are not runtime prerequisites. Git and `/bin/sh` must be available. Linux/macOS are the local
 execution platforms; CI exercises both.
 

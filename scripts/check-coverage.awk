@@ -4,6 +4,7 @@ NF == 3 {
     package = $1
     sub(/:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/, "", package)
     sub(/\/[^\/]+$/, "", package)
+    if (package ~ /^github\.com\/miclle\/deployd\/examples\//) next
     statements[package] += $2
     if ($3 > 0) covered[package] += $2
     total += $2

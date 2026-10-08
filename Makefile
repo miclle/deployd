@@ -6,7 +6,7 @@ GOLANGCI_LINT ?= golangci-lint
 # Keep lint on the Go minor version used by CI and supported by golangci-lint.
 LINT_GOTOOLCHAIN ?= go1.26.6
 
-.PHONY: check fmt fmt-check gomod lint test coverage
+.PHONY: check fmt fmt-check gomod lint test coverage examples
 
 check: gomod lint coverage
 
@@ -31,7 +31,10 @@ lint: fmt-check
 test:
 	go test -race -count=1 ./...
 
-coverage:
+examples:
+	go build ./examples/...
+
+coverage: examples
 	go test -race -count=1 -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
 	awk -f scripts/check-coverage.awk coverage.out

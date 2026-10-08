@@ -46,6 +46,7 @@ type Options struct {
 	Env            map[string]string
 	Redact         []string
 	OnStage        func(context.Context, Stage) error
+	OnCheckpoint   func(context.Context, Checkpoint) error
 	OnOutput       func(OutputEvent)
 	HTTPClient     *http.Client
 }
@@ -110,9 +111,20 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 			return ctx.Err()
 		}
 		if options.OnStage != nil {
-			return options.OnStage(ctx, next)
+			if err := options.OnStage(ctx, next); err != nil {
+				return err
+			}
 		}
-		return nil
+		if options.OnCheckpoint != nil {
+			checkpoint := Checkpoint{OperationID: options.OperationID, Stage: next, Result: copyResult(result)}
+			if next == Starting || next == Probing || next == Ready {
+				checkpoint.StartIntent = ProcessRef{RuntimeID: rt.ID(), Tag: "deployd-" + options.OperationID}
+			}
+			if err := options.OnCheckpoint(ctx, checkpoint); err != nil {
+				return err
+			}
+		}
+		return ctx.Err()
 	}
 	run := func(timeout time.Duration, command Command) error {
 		commandCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -212,11 +224,12 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 	if err = waitReady(ctx, rt, result.Process, origin+plan.config.Healthcheck.Path, plan.config.Healthcheck, options); err != nil {
 		return result, err
 	}
-	if err = transition(Ready); err != nil {
-		return result, err
-	}
 	readyAt := time.Now().UTC()
 	result.ReadyAt = &readyAt
+	if err = transition(Ready); err != nil {
+		result.ReadyAt = nil
+		return result, err
+	}
 	return result, nil
 }
 

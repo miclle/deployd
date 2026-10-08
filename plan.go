@@ -35,7 +35,7 @@ type Source interface {
 }
 
 // Plan keeps validated execution inputs immutable. Save Snapshot and original
-// configuration bytes in caller-owned storage; use Restore to resume execution.
+// configuration bytes in caller-owned storage; use Restore to restore the plan, not an execution cursor.
 type Plan struct {
 	snapshot Snapshot
 	config   Config

@@ -30,7 +30,11 @@ execution tag identities. Credentials stay in adapters or transient `Options.Env
 7. `ready`: return UTC readiness time and retained source/process evidence.
 
 `OnStage` runs before each stage's effects and may persist an acknowledgement.
-Callback failures stop advancement. Defaults bound cloning to five minutes,
+`OnCheckpoint` then receives a copy of the partial result and, from `starting`,
+a tag-only `StartIntent`. It must durably acknowledge that evidence before
+returning. `probing` carries the confirmed process; `ready` also carries endpoint
+and UTC readiness time. Callback failures stop advancement and compensate an
+already started process. A failed ready acknowledgement returns no `ReadyAt`. Defaults bound cloning to five minutes,
 installation to fifteen minutes, preparation/verification/start to one minute each,
 and compensating process cleanup to five seconds. Caller cancellation also bounds
 execution. Successful startup is detached from the Apply context lifetime.
@@ -69,3 +73,19 @@ Callbacks must return promptly. Repository output is untrusted and should be
 rendered as text. Redaction covers supplied literal values, not arbitrary secret
 transformations. Applications own any continuous log subscription and durable event
 storage; configuration and commands should not embed credentials.
+
+## Controller takeover
+
+Persist checkpoints in an attempt journal, separate from configuration bytes and
+transient credentials. After a crash, acquire exclusive ownership, reconstruct
+the same runtime incarnation, and inspect/stop `Result.Process` or, if its response
+was lost, `StartIntent`. A start intent is not proof of existence or ownership of
+a rejected conflicting start. Never reuse tags or clean up another attempt.
+
+`Restore` restores a plan, not an execution cursor. Repeating `Apply` with an
+existing workspace fails with `ErrConflict`. Complete reconciliation before
+deciding whether a new operation ID may run scripts again; external installation
+effects can make replay unsafe. The library does not fence stale workers or
+persist failure/cleanup completion: retain the final partial result and
+`StageError.Cleanup` as well as checkpoints. See the compiled
+[recovery examples](../recovery_example_test.go).

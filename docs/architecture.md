@@ -89,3 +89,5 @@ effects can make replay unsafe. The library does not fence stale workers or
 persist failure/cleanup completion: retain the final partial result and
 `StageError.Cleanup` as well as checkpoints. See the compiled
 [recovery examples](../recovery_example_test.go).
+
+See [error handling](errors.md) for typed exit codes and safe source classifications.

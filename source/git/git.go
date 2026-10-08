@@ -40,15 +40,15 @@ type Source struct {
 func New(repository string, options Options) (*Source, error) {
 	parsed, err := url.Parse(repository)
 	if err != nil || repository == "" || strings.ContainsAny(repository, "\r\n\x00") {
-		return nil, ErrSource
+		return nil, sourceFailure(ErrInvalidInput)
 	}
 	if parsed.Scheme == "https" {
 		if parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" {
-			return nil, ErrSource
+			return nil, sourceFailure(ErrInvalidInput)
 		}
 	} else {
 		if !options.AllowLocal || parsed.Scheme != "" || !filepath.IsAbs(repository) {
-			return nil, ErrSource
+			return nil, sourceFailure(ErrInvalidInput)
 		}
 		repository = filepath.Clean(repository)
 	}
@@ -56,13 +56,13 @@ func New(repository string, options Options) (*Source, error) {
 		options.Ref = "HEAD"
 	}
 	if strings.HasPrefix(options.Ref, "-") || strings.ContainsAny(options.Ref, "\r\n\x00 :~^?*[\\") {
-		return nil, ErrSource
+		return nil, sourceFailure(ErrInvalidInput)
 	}
 	if options.Timeout == 0 {
 		options.Timeout = 5 * time.Minute
 	}
 	if options.Timeout < 0 {
-		return nil, ErrSource
+		return nil, sourceFailure(ErrInvalidInput)
 	}
 	options.Env = cloneEnv(options.Env)
 	options.CheckoutEnv = cloneEnv(options.CheckoutEnv)
@@ -73,7 +73,7 @@ func New(repository string, options Options) (*Source, error) {
 func (s *Source) Resolve(ctx context.Context, configPath string) (deploy.ResolvedSource, error) {
 	configPath, err := deploy.NormalizeConfigPath(configPath)
 	if err != nil {
-		return deploy.ResolvedSource{}, err
+		return deploy.ResolvedSource{}, sourceFailure(ErrInvalidInput, err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.options.Timeout)
 	defer cancel()
@@ -86,7 +86,7 @@ func (s *Source) Resolve(ctx context.Context, configPath string) (deploy.Resolve
 		return deploy.ResolvedSource{}, err
 	}
 	if _, err = s.run(ctx, root, 1024, "fetch", "--quiet", "--depth=1", "--", s.repository, s.options.Ref); err != nil {
-		return deploy.ResolvedSource{}, err
+		return deploy.ResolvedSource{}, sourceFailure(ErrFetchFailed, err)
 	}
 	sha, err := s.run(ctx, root, 128, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
 	if err != nil {
@@ -97,11 +97,11 @@ func (s *Source) Resolve(ctx context.Context, configPath string) (deploy.Resolve
 	// from a versioned file into files on the target host.
 	mode, err := s.run(ctx, root, 4096, "ls-tree", commit, "--", configPath)
 	if err != nil || (!strings.HasPrefix(string(mode), "100644 blob ") && !strings.HasPrefix(string(mode), "100755 blob ")) {
-		return deploy.ResolvedSource{}, ErrSource
+		return deploy.ResolvedSource{}, sourceFailure(ErrConfigUnavailable, err)
 	}
 	data, err := s.run(ctx, root, deploy.MaxConfigBytes, "show", commit+":"+configPath)
 	if err != nil {
-		return deploy.ResolvedSource{}, err
+		return deploy.ResolvedSource{}, sourceFailure(ErrConfigUnavailable, err)
 	}
 	return deploy.ResolvedSource{SourceID: s.repository, CommitSHA: commit, Config: data}, nil
 }
@@ -125,12 +125,12 @@ func (s *Source) Materialize(ctx context.Context, rt deploy.Runtime, snapshot de
 	exit, err := rt.Run(ctx, deploy.Command{Script: script, Directory: workspace, Env: cloneEnv(s.options.CheckoutEnv)}, capture.write)
 	if err != nil {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return sourceFailure(ErrMaterializeFailed, ctx.Err(), err)
 		}
-		return ErrSource
+		return sourceFailure(ErrMaterializeFailed, err)
 	}
 	if exit.Code != 0 {
-		return ErrSource
+		return sourceFailure(ErrMaterializeFailed, &deploy.CommandExitError{Code: exit.Code})
 	}
 	return nil
 }
@@ -149,14 +149,19 @@ func (s *Source) run(ctx context.Context, root string, limit int, args ...string
 	command.Stdout = writer
 	command.Stderr = io.Discard
 	command.WaitDelay = time.Second
-	if err := command.Run(); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, ErrSource
-	}
+	err := command.Run()
 	if writer.exceeded {
-		return nil, ErrSource
+		return nil, sourceFailure(ErrOutputLimit)
+	}
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, sourceFailure(ctx.Err())
+		}
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() >= 0 {
+			return nil, sourceFailure(ErrCommandFailed, &deploy.CommandExitError{Code: exitError.ExitCode()})
+		}
+		return nil, sourceFailure(ErrCommandFailed)
 	}
 	return writer.data, nil
 }

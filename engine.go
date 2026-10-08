@@ -136,7 +136,7 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 			return err
 		}
 		if exit.Code != 0 {
-			return fmt.Errorf("command exited with code %d", exit.Code)
+			return &CommandExitError{Code: exit.Code}
 		}
 		return nil
 	}

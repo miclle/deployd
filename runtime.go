@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 var (
@@ -41,6 +42,14 @@ type Output func(Stream, []byte)
 
 // Exit is a directly observed command exit code.
 type Exit struct{ Code int }
+
+// CommandExitError reports a directly observed nonzero exit without command text
+// or provider output. It does not classify the failure as safe to retry.
+type CommandExitError struct{ Code int }
+
+func (e *CommandExitError) Error() string {
+	return fmt.Sprintf("command exited with code %d", e.Code)
+}
 
 // ProcessRef is serializable, credential-free, execution-scoped process evidence.
 // An empty ID with a Tag represents a start whose response was lost.

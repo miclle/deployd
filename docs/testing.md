@@ -56,3 +56,9 @@ Live-output tests verify pre-completion delivery, mixed streams, byte budgets,
 UTF-8 boundaries, late callbacks and overlapping/split redaction against the
 whole-stream reference algorithm. Log protocol tests cover PID confirmation,
 foreign tags, cancellation, malformed/failed streams and absence of signals.
+
+Long overlapping credentials are covered with single and fragmented writes,
+including a trailing partial credential. For each secret, each matching pass marks
+each pending byte at most once, avoiding repeated work for overlapping matches.
+Run `go test ./internal/redact -run '^$' -bench BenchmarkStreamOverlappingMatches`
+to measure this path with 1 KiB and 32 KiB repeated-byte credentials.

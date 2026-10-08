@@ -66,7 +66,7 @@ func (s *Stream) mark(truncated bool) {
 			}
 			prefix[i] = matched
 		}
-		matched := 0
+		matched, markedUntil := 0, 0
 		for i, value := range s.pending {
 			for matched > 0 && value != secret[matched] {
 				matched = prefix[matched-1]
@@ -75,14 +75,17 @@ func (s *Stream) mark(truncated bool) {
 				matched++
 			}
 			if matched == len(secret) {
-				for j := i + 1 - matched; j <= i; j++ {
+				// Matches end in order. Mark only newly covered bytes so long,
+				// overlapping matches stay linear in the pending input size.
+				for j := max(i+1-matched, markedUntil); j <= i; j++ {
 					s.masked[j] = true
 				}
+				markedUntil = i + 1
 				matched = prefix[matched-1]
 			}
 		}
 		if truncated && matched > 0 {
-			for j := len(s.pending) - matched; j < len(s.pending); j++ {
+			for j := max(len(s.pending)-matched, markedUntil); j < len(s.pending); j++ {
 				s.masked[j] = true
 			}
 		}

@@ -16,3 +16,6 @@ the caller; the library has no product-specific filename convention.
 
 Do not put credentials in versioned configuration or commands. Runtime environment
 variables are transient inputs, separate from immutable source evidence.
+
+Reusable protocol fixtures live in `testdata/protocol`; see the
+[controller migration notes](controller-integration.md).

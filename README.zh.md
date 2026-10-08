@@ -42,7 +42,7 @@ result, err := deploy.Apply(ctx, source, runtime, plan, deploy.Options{
 err = deploy.Stop(cleanupCtx, runtime, result.Process)
 ```
 
-清理时使用有期限的 context，并处理所有错误。参考[可编译的完整 Go 示例](example_test.go)、[控制器接管](docs/architecture.zh.md#控制器接管)、[执行架构](docs/architecture.zh.md)、[配置协议](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
+清理时使用有期限的 context，并处理所有错误。参考[可编译的完整 Go 示例](example_test.go)、[控制器接管](docs/architecture.zh.md#控制器接管)、[执行架构](docs/architecture.zh.md)、[控制器集成](docs/controller-integration.zh.md)、[配置协议](docs/configuration.zh.md)和[适配器](docs/adapters.zh.md)。Git、本地进程、envd Process 适配器分别位于独立包中；调用方也可以实现 `Source` 和 `Runtime`。
 
 ## 职责
 
@@ -60,4 +60,3 @@ make coverage
 ```
 
 `make coverage` 运行 race 测试并检查语句覆盖率：核心包至少 95%，每个适配器至少 90%。CI 在 Go 1.25、1.26 和 1.27 上执行同一门槛，固定 golangci-lint 2.14.0。[测试文档](docs/testing.zh.md)说明覆盖范围及本地集成与真实远端验收的区别。
-

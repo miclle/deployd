@@ -1,0 +1,11 @@
+[
+  {"file":"defaults.yaml","valid":true,"workingDirectory":".","healthPath":"/","timeoutSeconds":60},
+  {"file":"monorepo.yaml","valid":true,"workingDirectory":"apps/api","healthPath":"/health","timeoutSeconds":120},
+  {"file":"alias.yaml","valid":false},
+  {"file":"duplicate.yaml","valid":false},
+  {"file":"unknown.yaml","valid":false},
+  {"file":"escape.yaml","valid":false},
+  {"file":"external-health.yaml","valid":false},
+  {"file":"null-timeout.yaml","valid":false},
+  {"file":"multiple-documents.yaml","valid":false}
+]

@@ -1,0 +1,4 @@
+version: 1
+installCommand: &command npm ci
+startCommand: *command
+port: 3000

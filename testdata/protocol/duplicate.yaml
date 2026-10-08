@@ -1,0 +1,5 @@
+version: 1
+installCommand: npm ci
+startCommand: npm run start
+port: 3000
+port: 8080

@@ -48,7 +48,7 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 Use a bounded cleanup context and handle every error. See the [complete, compiled
 Go example](example_test.go), [controller takeover](docs/architecture.md#controller-takeover),
 [execution architecture](docs/architecture.md),
-[configuration protocol](docs/configuration.md), and [adapters](docs/adapters.md).
+[controller integration](docs/controller-integration.md), [configuration protocol](docs/configuration.md), and [adapters](docs/adapters.md).
 The Git adapter, local process runtime, and envd Process runtime are separate
 packages; callers can also implement `Source` and `Runtime`.
 
@@ -83,4 +83,3 @@ make coverage
 core package and 90% for each adapter. CI runs that gate on Go 1.25, 1.26, and 1.27, and
 pins golangci-lint to 2.14.0. See [testing](docs/testing.md) for the coverage matrix
 and the distinction between local integration and live remote acceptance.
-

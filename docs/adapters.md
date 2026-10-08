@@ -6,8 +6,9 @@
 
 `source/git.New` accepts a credential-free HTTPS repository URL and a branch, tag,
 full SHA, or `HEAD`. Git must be installed on the controller and runtime. Resolution
-uses a temporary repository, a five-minute default deadline, bounded blob reads,
-and regular-file configuration only. Materialization fetches the saved SHA and
+uses a temporary repository, a five-minute default deadline and bounded Git
+responses. It returns only repository identity and the full commit; applications
+read any configuration themselves at that commit. Materialization fetches the saved SHA and
 checks the resulting HEAD; it never uses the original mutable reference.
 
 Local absolute paths require `AllowLocal: true` and are for trusted local execution.

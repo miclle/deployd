@@ -19,16 +19,20 @@
 | `DEPLOYD_ENVD_REPOSITORY` | 部署测试使用的可信公开 HTTPS 夹具仓库 |
 | `DEPLOYD_ENVD_COMMIT` | 部署测试使用的完整固定提交 |
 | `DEPLOYD_ENVD_WORK_ROOT` | 部署测试使用的专用绝对路径 |
-| `DEPLOYD_ENVD_CONFIG_PATH` | 可选仓库配置路径，默认 `deploy.yaml` |
+| `DEPLOYD_ENVD_INSTALL_COMMAND` | 必需的可信安装或构建脚本，不含凭证 |
+| `DEPLOYD_ENVD_START_COMMAND` | 必需的可信前台服务脚本，不含凭证 |
+| `DEPLOYD_ENVD_PORT` | 必需的 1～65535 整数服务端口 |
+| `DEPLOYD_ENVD_WORKING_DIRECTORY` | 可选仓库相对目录，默认 `.` |
+| `DEPLOYD_ENVD_HEALTH_PATH` | 可选就绪路径，默认 `/`，时限为 60 秒 |
 
-显式启用后缺少配置会失败，不会悄悄跳过。部署夹具须绑定配置端口，并在健康路径返回 2xx。公开夹具不验证私有源码凭证。
+显式启用后缺少配置会失败，不会悄悄跳过。部署测试将这些输入映射为 Spec，无需仓库配置文件。夹具须绑定传入的端口，并在健康路径返回 2xx。公开夹具不验证私有源码凭证。
 
 ```sh
 go test -race -count=1 -timeout 2m ./runtime/envd -run '^TestLiveEnvdAcceptance$' -v
 go test -race -count=1 -timeout 25m ./runtime/envd -run '^TestLiveEnvdDeployment$' -v
 ```
 
-进程测试验证工具与权限、有限命令及其子进程的取消清理、流与请求关闭后的独立存活、适配器重建、只有标签的核对、错误标签拒绝与停止后确认，仅删除自己随机命名的 `/tmp/deployd-acceptance-*` 目录。部署测试验证固定 Git 检出、配置校验、安装、前台启动、路由后的 HTTP 就绪和重建适配器后的停止。部署工作区保留供诊断，其保留与清理由调用方负责。
+进程测试验证工具与权限、有限命令及其子进程的取消清理、流与请求关闭后的独立存活、适配器重建、只有标签的核对、错误标签拒绝与停止后确认，仅删除自己随机命名的 `/tmp/deployd-acceptance-*` 目录。部署测试验证固定 Git 检出、执行参数与工作目录校验、安装、前台启动、路由后的 HTTP 就绪和重建适配器后的停止。部署工作区保留供诊断，其保留与清理由调用方负责。
 
 ## 证据与限制
 

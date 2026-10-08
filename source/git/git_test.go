@@ -28,10 +28,10 @@ func repository(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitCommand(t, dir, "init", "--quiet")
-	if err := os.WriteFile(filepath.Join(dir, "deploy.yaml"), []byte("version: 1\ninstallCommand: true\nstartCommand: sleep 60\nport: 8080\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("initial source\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	gitCommand(t, dir, "add", "deploy.yaml")
+	gitCommand(t, dir, "add", "README.md")
 	gitCommand(t, dir, "commit", "--quiet", "-m", "initial")
 	return dir
 }
@@ -41,12 +41,12 @@ func TestSourceImmutableMaterialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := deploy.Prepare(context.Background(), source, "deploy.yaml")
+	plan, err := deploy.Prepare(context.Background(), source, deploy.Spec{InstallCommand: "true", StartCommand: "sleep 60", Port: 8080})
 	if err != nil {
 		t.Fatal(err)
 	}
 	snapshot := plan.Snapshot()
-	if err := os.WriteFile(filepath.Join(dir, "deploy.yaml"), []byte("changed"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("changed"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	gitCommand(t, dir, "commit", "--quiet", "-am", "changed")
@@ -62,7 +62,7 @@ func TestSourceImmutableMaterialization(t *testing.T) {
 	if got := gitCommand(t, target, "rev-parse", "HEAD"); got != snapshot.CommitSHA {
 		t.Fatalf("changed commit: %s", got)
 	}
-	data, err := os.ReadFile(filepath.Join(target, "deploy.yaml"))
+	data, err := os.ReadFile(filepath.Join(target, "README.md"))
 	if err != nil || string(data) == "changed" {
 		t.Fatal("materialized mutable ref")
 	}
@@ -110,42 +110,13 @@ func TestSourceResolveFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Resolve(context.Background(), "../config"); !errors.Is(err, deploy.ErrInvalidConfig) {
-		t.Fatal(err)
-	}
-	if _, err := s.Resolve(context.Background(), "missing.yaml"); !errors.Is(err, ErrSource) {
-		t.Fatal(err)
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := s.Resolve(ctx, "deploy.yaml"); !errors.Is(err, context.Canceled) {
+	if _, err := s.Resolve(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	s.options.Ref = "missing-ref"
-	if _, err := s.Resolve(context.Background(), "deploy.yaml"); !errors.Is(err, ErrSource) {
-		t.Fatal(err)
-	}
-	s.options.Ref = "HEAD"
-	if err := os.Remove(filepath.Join(dir, "deploy.yaml")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("outside", filepath.Join(dir, "deploy.yaml")); err != nil {
-		t.Fatal(err)
-	}
-	gitCommand(t, dir, "add", "deploy.yaml")
-	gitCommand(t, dir, "commit", "--quiet", "-m", "symlink")
-	if _, err := s.Resolve(context.Background(), "deploy.yaml"); !errors.Is(err, ErrSource) {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(dir, "deploy.yaml")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "deploy.yaml"), []byte(strings.Repeat("x", deploy.MaxConfigBytes+1)), 0600); err != nil {
-		t.Fatal(err)
-	}
-	gitCommand(t, dir, "add", "deploy.yaml")
-	gitCommand(t, dir, "commit", "--quiet", "-m", "oversize")
-	if _, err := s.Resolve(context.Background(), "deploy.yaml"); !errors.Is(err, ErrSource) {
+	if _, err := s.Resolve(context.Background()); !errors.Is(err, ErrSource) {
 		t.Fatal(err)
 	}
 }
@@ -172,7 +143,7 @@ func TestGitOutputBoundsAndRedaction(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
 	s, _ := New(repository(t), Options{AllowLocal: true})
-	if _, err := s.Resolve(ctx, "deploy.yaml"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, err := s.Resolve(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal(err)
 	}
 }

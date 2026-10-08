@@ -4,10 +4,14 @@
 
 ## Immutable planning
 
-`Prepare` resolves a source and validates configuration before provisioning.
-Save `plan.Snapshot()` and `plan.ConfigBytes()` in caller-owned storage; both expose
-copies. `Restore` rechecks that exact YAML digest and protocol without contacting a
-source provider. Applying a plan never resolves its original branch again.
+`NewPlan` binds resolved source evidence to a validated, normalized Spec before
+provisioning. `Prepare` validates a supplied Spec and resolves the source once.
+Applications own configuration parsing and must read repository configuration at
+the resolved commit. Save `plan.Snapshot()` and `plan.Spec()` in caller-owned
+storage; both expose value copies. `Restore` checks the evidence version,
+canonical parameters and their digest without contacting a source provider.
+Applying a plan revalidates its evidence before effects and never resolves its
+original branch again. See [execution parameters](configuration.md).
 
 `Source` separates immutable resolution from materialization in an empty target
 workspace. `Runtime` separates finite commands, detached processes, inspection,
@@ -19,10 +23,10 @@ execution tag identities. Credentials stay in adapters or transient `Options.Env
 1. `preparing`: reserve `WorkRoot/OperationID` exclusively. Existing paths fail with
    `ErrConflict`; no workspace is deleted or reused.
 2. `cloning`: fetch and check out the saved full commit.
-3. `verifying`: check the saved configuration digest, regular-file configuration,
-   and physical config/working-directory confinement within the workspace.
+3. `verifying`: check physical working-directory confinement within the workspace.
+   No deployment configuration file is required.
 4. `installing`: run the installation/build command with transient environment.
-5. `starting`: recheck the configuration and directory after installation; confirm
+5. `starting`: recheck directory confinement after installation; confirm
    a detached foreground process with the expected runtime and operation tag.
 6. `probing`: inspect process liveness and poll the readiness origin plus health
    path. Accept only 2xx responses, without redirects; recheck liveness after HTTP
@@ -43,8 +47,8 @@ execution. Successful startup is detached from the Apply context lifetime.
 
 Retain `Result` even when Apply returns an error. `StageError` reports the failed
 stage; `errors.Is` preserves causes and cleanup failures. Its printable message
-omits commands, YAML, and provider bodies. A failed start may return a tag-only
-process reference: the runtime can inspect/stop that unique tag if PID confirmation
+omits commands, execution parameters, and provider bodies. A failed start may
+return a tag-only process reference: the runtime can inspect/stop that unique tag if PID confirmation
 was lost. Never reuse operation IDs/tags; serialize actions for the same attempt.
 
 Failure after an uncertain/confirmed start attempts Stop with an independent,
@@ -76,8 +80,8 @@ storage; configuration and commands should not embed credentials.
 
 ## Controller takeover
 
-Persist checkpoints in an attempt journal, separate from configuration bytes and
-transient credentials. After a crash, acquire exclusive ownership, reconstruct
+Persist checkpoints in an attempt journal, separate from saved execution
+parameters and transient credentials. After a crash, acquire exclusive ownership, reconstruct
 the same runtime incarnation, and inspect/stop `Result.Process` or, if its response
 was lost, `StartIntent`. A start intent is not proof of existence or ownership of
 a rejected conflicting start. Never reuse tags or clean up another attempt.

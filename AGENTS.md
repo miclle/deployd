@@ -2,9 +2,9 @@
 
 - Keep the public package independent of account systems, HTTP servers, databases,
   schedulers, and resource provisioning.
-- Preserve immutable commit/configuration evidence, bounded execution, exact
+- Preserve immutable commit/execution-parameter evidence, bounded execution, exact
   process identity, and cancellation/cleanup semantics.
-- Never put credentials, source YAML, shell commands, or upstream response bodies
+- Never put credentials, application configuration, shell commands, or upstream response bodies
   in errors or structured lifecycle events. Application output is untrusted data.
 - English is the canonical language for code, comments, errors, and documentation.
   Maintain corresponding Chinese versions of prose documents, except this guide.

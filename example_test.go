@@ -21,11 +21,15 @@ func ExampleApply() {
 	if err != nil {
 		panic(err)
 	}
-	plan, err := deploy.Prepare(ctx, source, "deploy.yaml")
+	// The application may obtain these parameters from any configuration source.
+	plan, err := deploy.Prepare(ctx, source, deploy.Spec{
+		InstallCommand: "npm ci", StartCommand: "npm start", Port: 3000,
+		Healthcheck: deploy.Healthcheck{Path: "/health"},
+	})
 	if err != nil {
 		panic(err)
 	}
-	// Persist plan.Snapshot() and plan.ConfigBytes() before allocating a target.
+	// Persist plan.Snapshot() and plan.Spec() before allocating a target.
 	runtime, err := local.New("development-host")
 	if err != nil {
 		panic(err)

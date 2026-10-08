@@ -3,88 +3,124 @@ package deploy
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
-// ErrSnapshotMismatch means source evidence or its configuration changed.
+// ErrSnapshotMismatch means source evidence or saved execution parameters do not match.
 var ErrSnapshotMismatch = errors.New("deployment snapshot does not match")
 
-// Snapshot binds execution to immutable source and exact configuration bytes.
+// Snapshot binds execution to immutable source and normalized execution parameters.
+// Version identifies the plan evidence and digest scheme, not an application file format.
+// SpecHash is an integrity digest, not authentication or authorization evidence.
 type Snapshot struct {
-	SourceID   string `json:"sourceID"`
-	CommitSHA  string `json:"commitSHA"`
-	ConfigPath string `json:"configPath"`
-	ConfigHash string `json:"configHash"`
+	Version   int    `json:"version"`
+	SourceID  string `json:"sourceID"`
+	CommitSHA string `json:"commitSHA"`
+	SpecHash  string `json:"specHash"`
 }
 
-// ResolvedSource is source adapter output; Config holds the original YAML bytes.
+// ResolvedSource is immutable source adapter output, independent of configuration.
 type ResolvedSource struct {
 	SourceID  string
 	CommitSHA string
-	Config    []byte
 }
 
-// Source resolves an immutable snapshot and materializes that exact snapshot in
+// Source resolves immutable source evidence and materializes that exact commit in
 // an existing empty workspace. Credentials stay inside the adapter.
 type Source interface {
-	Resolve(context.Context, string) (ResolvedSource, error)
+	Resolve(context.Context) (ResolvedSource, error)
 	Materialize(context.Context, Runtime, Snapshot, string, Output) error
 }
 
-// Plan keeps validated execution inputs immutable. Save Snapshot and original
-// configuration bytes in caller-owned storage; use Restore to restore the plan, not an execution cursor.
+// Plan keeps validated execution inputs immutable. Persist Snapshot and Spec in
+// caller-owned storage; Restore restores a plan, not an execution cursor.
 type Plan struct {
 	snapshot Snapshot
-	config   Config
-	data     []byte
+	spec     Spec
 }
 
-// Snapshot returns the credential-free source evidence.
+// Snapshot returns a copy of the credential-free execution evidence.
 func (p Plan) Snapshot() Snapshot { return p.snapshot }
 
-// Config returns a copy of the validated configuration.
-func (p Plan) Config() Config { return p.config }
+// Spec returns a copy of the normalized execution parameters for persistence.
+// Commands are sensitive inputs and must not be included in lifecycle events.
+func (p Plan) Spec() Spec { return p.spec }
 
-// ConfigBytes returns a copy of the original YAML for caller-owned persistence.
-// Save it with Snapshot to restore the plan without resolving a mutable reference.
-func (p Plan) ConfigBytes() []byte { return append([]byte(nil), p.data...) }
+// NewPlan validates resolved source evidence and freezes normalized execution
+// parameters before provisioning. It does not read files or contact a provider.
+// For repository configuration, callers must read it from source.CommitSHA.
+func NewPlan(source ResolvedSource, spec Spec) (Plan, error) {
+	if !validSource(source) {
+		return Plan{}, ErrSnapshotMismatch
+	}
+	spec, err := NormalizeSpec(spec)
+	if err != nil {
+		return Plan{}, err
+	}
+	snapshot := Snapshot{Version: 1, SourceID: source.SourceID, CommitSHA: source.CommitSHA, SpecHash: specHash(spec)}
+	return Plan{snapshot: snapshot, spec: spec}, nil
+}
 
-// Prepare validates configuration before the caller provisions a target.
-func Prepare(ctx context.Context, source Source, configPath string) (Plan, error) {
+// Prepare validates parameters before resolving a source and creating a plan.
+// Call Resolve and NewPlan separately when configuration must be read at the
+// resolved commit; never read configuration from a moving branch instead.
+func Prepare(ctx context.Context, source Source, spec Spec) (Plan, error) {
 	if source == nil {
 		return Plan{}, ErrSnapshotMismatch
 	}
-	configPath, err := NormalizeConfigPath(configPath)
+	spec, err := NormalizeSpec(spec)
 	if err != nil {
 		return Plan{}, err
 	}
-	resolved, err := source.Resolve(ctx, configPath)
+	resolved, err := source.Resolve(ctx)
 	if err != nil {
 		return Plan{}, err
 	}
-	hash := sha256.Sum256(resolved.Config)
-	return Restore(Snapshot{SourceID: resolved.SourceID, CommitSHA: resolved.CommitSHA, ConfigPath: configPath, ConfigHash: "sha256:" + hex.EncodeToString(hash[:])}, resolved.Config)
+	return NewPlan(resolved, spec)
 }
 
-// Restore revalidates persisted source evidence and configuration. It does not
-// re-resolve a mutable branch or contact a source provider.
-func Restore(snapshot Snapshot, data []byte) (Plan, error) {
-	normalized, err := NormalizeConfigPath(snapshot.ConfigPath)
-	if err != nil || normalized != snapshot.ConfigPath || snapshot.SourceID == "" || len(snapshot.SourceID) > 2048 || strings.IndexFunc(snapshot.SourceID, unicode.IsControl) >= 0 || !validCommit(snapshot.CommitSHA) {
+// Restore revalidates saved source evidence and the exact normalized Spec. It
+// neither reads application configuration nor re-resolves a mutable reference.
+// Missing/unsupported versions, noncanonical parameters and digest drift fail closed.
+func Restore(snapshot Snapshot, spec Spec) (Plan, error) {
+	if snapshot.Version != 1 || !validSource(ResolvedSource{SourceID: snapshot.SourceID, CommitSHA: snapshot.CommitSHA}) {
 		return Plan{}, ErrSnapshotMismatch
 	}
-	hash := sha256.Sum256(data)
-	if snapshot.ConfigHash != "sha256:"+hex.EncodeToString(hash[:]) {
-		return Plan{}, ErrSnapshotMismatch
-	}
-	config, err := ParseConfig(data)
+	normalized, err := NormalizeSpec(spec)
 	if err != nil {
 		return Plan{}, err
 	}
-	return Plan{snapshot: snapshot, config: config, data: append([]byte(nil), data...)}, nil
+	if normalized != spec || snapshot.SpecHash != specHash(spec) {
+		return Plan{}, ErrSnapshotMismatch
+	}
+	return Plan{snapshot: snapshot, spec: spec}, nil
+}
+
+func validSource(source ResolvedSource) bool {
+	return source.SourceID != "" && len(source.SourceID) <= 2048 && utf8.ValidString(source.SourceID) && strings.IndexFunc(source.SourceID, unicode.IsControl) < 0 && validCommit(source.CommitSHA)
+}
+
+// Version 1 hashes the domain prefix, followed by fields in declared Spec order.
+// Strings are UTF-8 bytes prefixed by an unsigned 64-bit big-endian byte length;
+// integers are unsigned 64-bit big-endian values. Fields/semantics/encoding changes
+// require a new snapshot version to preserve persisted execution meaning.
+func specHash(spec Spec) string {
+	data := []byte("deployd/spec/v1\x00")
+	for _, value := range []string{spec.WorkingDirectory, spec.InstallCommand, spec.StartCommand} {
+		data = binary.BigEndian.AppendUint64(data, uint64(len(value)))
+		data = append(data, value...)
+	}
+	data = binary.BigEndian.AppendUint64(data, uint64(spec.Port))
+	data = binary.BigEndian.AppendUint64(data, uint64(len(spec.Healthcheck.Path)))
+	data = append(data, spec.Healthcheck.Path...)
+	data = binary.BigEndian.AppendUint64(data, uint64(spec.Healthcheck.TimeoutSeconds))
+	hash := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
 func validCommit(value string) bool {

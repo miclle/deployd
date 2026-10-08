@@ -54,19 +54,18 @@ to use your default Go toolchain; lint is never skipped.
 
 | Area | Evidence |
 | --- | --- |
-| Configuration | Strict schema, UTF-8, size/depth, aliases, duplicates, version, defaults, escaping paths and health URLs |
-| Planning | Immutable source/config copies, exact digest, restore, mutable-input changes, invalid evidence |
+| Execution parameters | UTF-8, blank/NUL commands, ports, defaults, idempotent normalization, escaping directories and health URLs |
+| Planning | Immutable source/Spec copies, golden versioned digest, structured persistence/restore, all parameter drift, legacy/future version rejection and invalid evidence |
 | Engine | All stage acknowledgement failures, deadlines/cancellation, script errors, uncertain/mismatched starts, process exits, readiness redirects/failures, cleanup errors |
 | Output | Bounds, split/overlapping secret values, complete and partial credentials at truncation boundaries, UTF-8 chunk boundaries, late callbacks |
-| Git | Real local repository, moved HEAD after resolution, pinned checkout, symlink/oversized config, failures, timeout and bounded/redacted output |
+| Git | Real local repository, moved HEAD after resolution, pinned checkout without a configuration file, failures, timeout and bounded/redacted output |
 | Local runtime | Real processes, detached lifetime, finite cancellation, group cleanup before leader reaping, process/tag identity, external supervisor termination, close and observed exit codes |
 | envd runtime | HTTP protocol fixtures, stream framing, authentication, PID/exit events, inspection/signals, stale and ambiguous tags, missing/malformed/oversized responses, redirects, lost-PID cleanup, reused-PID stream failures, stop deadlines, real supervisor/child cleanup before and after session creation |
-| End to end | Real Git + HTTP service: fixed commit, install artifact, readiness, duplicate attempt, stop, health failure cleanup, cancellation after start, configuration drift and symlink confinement |
+| End to end | Real Git + HTTP service: fixed commit, install artifact, readiness, duplicate attempt, stop, health failure cleanup, cancellation after start, no configuration file, directory symlink confinement before and after installation |
 
 The complete Go example is compile-checked; its placeholder repository is not
 contacted during tests. Integration tests start a child copy of the Go test binary
-as the HTTP service, so Node.js/Python are not runtime prerequisites. Git, `/bin/sh`,
-`realpath`, and `sha256sum` or `shasum` must be available. Linux/macOS are the local
+as the HTTP service, so Node.js/Python are not runtime prerequisites. Git and `/bin/sh` must be available. Linux/macOS are the local
 execution platforms; CI exercises both.
 
 Supervisor tests exercise `/bin/sh` and explicitly exercise dash when installed,

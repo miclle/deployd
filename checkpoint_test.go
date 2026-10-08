@@ -21,7 +21,7 @@ func TestCheckpointsPersistIntentAndConfirmedEvidence(t *testing.T) {
 			t.Fatal("checkpoint preceded stage acknowledgement")
 		}
 		data, err := json.Marshal(checkpoint)
-		if err != nil || strings.Contains(string(data), "secret-value") {
+		if err != nil || strings.Contains(string(data), "secret-value") || strings.Contains(string(data), p.Spec().InstallCommand) || strings.Contains(string(data), p.Spec().StartCommand) {
 			t.Fatal("checkpoint could not be safely persisted", err)
 		}
 		var restored Checkpoint

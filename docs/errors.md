@@ -4,17 +4,22 @@
 
 Use `errors.Is` and `errors.As`; never parse printed messages. `StageError` carries
 the failed stage and independent cleanup error. Its message intentionally excludes
-commands, YAML and provider bodies. A `CommandExitError` contains the directly
+commands, execution parameters and provider bodies. A `CommandExitError` contains the directly
 observed nonzero code for an installation or Git command. Exiting nonzero does not
 prove that the script produced no side effects.
+
+`deploy.ErrInvalidInput` identifies invalid Spec fields, execution options or
+runtime inputs. `deploy.ErrSnapshotMismatch` identifies invalid source evidence,
+unsupported plan versions, noncanonical saved parameters or digest drift. Neither
+message includes caller input. Configuration read/parse errors belong to the
+application.
 
 Git errors remain compatible with `gitsource.ErrSource`. Additional classifications:
 
 | Classification | Meaning |
 | --- | --- |
-| `ErrInvalidInput` | Invalid source options or configuration path |
+| `ErrInvalidInput` | Invalid source options |
 | `ErrFetchFailed` | Reference/commit fetch failed; network, authentication and missing ref are not distinguished |
-| `ErrConfigUnavailable` | Configuration missing, nonregular, unreadable or oversized |
 | `ErrOutputLimit` | Controller-side Git response exceeded its byte limit |
 | `ErrCommandFailed` | Controller-side Git command failed; observed exit codes are retained |
 | `ErrMaterializeFailed` | Target checkout failed; runtime error identity and uncertain cleanup are retained |

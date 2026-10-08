@@ -41,7 +41,7 @@ type LogOptions struct {
 // Stage is empty for service log events. Provider cursor/replay semantics vary.
 func FollowLogs(ctx context.Context, source LogSource, ref ProcessRef, options LogOptions) error {
 	if source == nil || options.OnOutput == nil || options.MaxBytes < 0 || options.MaxBytes > MaxOutputBytes {
-		return ErrInvalidConfig
+		return ErrInvalidInput
 	}
 	if options.MaxBytes == 0 {
 		options.MaxBytes = MaxOutputBytes

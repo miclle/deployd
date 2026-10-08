@@ -69,11 +69,11 @@ func TestFollowLogsValidationNormalEndAndSafeFailure(t *testing.T) {
 		return nil
 	})
 	for _, bad := range []LogOptions{{}, {MaxBytes: -1, OnOutput: options.OnOutput}, {MaxBytes: MaxOutputBytes + 1, OnOutput: options.OnOutput}} {
-		if err := FollowLogs(context.Background(), source, ProcessRef{}, bad); !errors.Is(err, ErrInvalidConfig) {
+		if err := FollowLogs(context.Background(), source, ProcessRef{}, bad); !errors.Is(err, ErrInvalidInput) {
 			t.Fatal(err)
 		}
 	}
-	if err := FollowLogs(context.Background(), nil, ProcessRef{}, options); !errors.Is(err, ErrInvalidConfig) {
+	if err := FollowLogs(context.Background(), nil, ProcessRef{}, options); !errors.Is(err, ErrInvalidInput) {
 		t.Fatal(err)
 	}
 	if err := FollowLogs(context.Background(), source, ProcessRef{}, options); err != nil {

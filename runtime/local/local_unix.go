@@ -219,7 +219,7 @@ func (r *Runtime) Endpoint(ctx context.Context, port int) (string, error) {
 		return "", err
 	}
 	if port < 1 || port > 65535 {
-		return "", deploy.ErrInvalidConfig
+		return "", deploy.ErrInvalidInput
 	}
 	return "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), nil
 }

@@ -30,7 +30,7 @@ type Options struct {
 	CheckoutEnv map[string]string
 }
 
-// Source reads configuration through Git and materializes the same commit remotely.
+// Source resolves an immutable Git commit and materializes it remotely.
 type Source struct {
 	repository string
 	options    Options
@@ -69,12 +69,8 @@ func New(repository string, options Options) (*Source, error) {
 	return &Source{repository: repository, options: options}, nil
 }
 
-// Resolve fetches the selected reference once, then reads the exact commit blob.
-func (s *Source) Resolve(ctx context.Context, configPath string) (deploy.ResolvedSource, error) {
-	configPath, err := deploy.NormalizeConfigPath(configPath)
-	if err != nil {
-		return deploy.ResolvedSource{}, sourceFailure(ErrInvalidInput, err)
-	}
+// Resolve fetches the selected reference once and returns its full commit.
+func (s *Source) Resolve(ctx context.Context) (deploy.ResolvedSource, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.options.Timeout)
 	defer cancel()
 	root, err := os.MkdirTemp("", "deployd-source-")
@@ -93,17 +89,7 @@ func (s *Source) Resolve(ctx context.Context, configPath string) (deploy.Resolve
 		return deploy.ResolvedSource{}, err
 	}
 	commit := strings.TrimSpace(string(sha))
-	// Only regular blobs are configuration. In particular, never follow a symlink
-	// from a versioned file into files on the target host.
-	mode, err := s.run(ctx, root, 4096, "ls-tree", commit, "--", configPath)
-	if err != nil || (!strings.HasPrefix(string(mode), "100644 blob ") && !strings.HasPrefix(string(mode), "100755 blob ")) {
-		return deploy.ResolvedSource{}, sourceFailure(ErrConfigUnavailable, err)
-	}
-	data, err := s.run(ctx, root, deploy.MaxConfigBytes, "show", commit+":"+configPath)
-	if err != nil {
-		return deploy.ResolvedSource{}, sourceFailure(ErrConfigUnavailable, err)
-	}
-	return deploy.ResolvedSource{SourceID: s.repository, CommitSHA: commit, Config: data}, nil
+	return deploy.ResolvedSource{SourceID: s.repository, CommitSHA: commit}, nil
 }
 
 // Materialize fetches the supplied SHA without consulting the original ref.

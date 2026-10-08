@@ -1,8 +1,0 @@
-version: 1
-workingDirectory: ./apps/api/
-installCommand: npm ci && npm run build
-startCommand: npm run start -- --host 0.0.0.0 --port 8080
-port: 8080
-healthcheck:
-  path: /health
-  timeoutSeconds: 120

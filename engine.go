@@ -19,7 +19,7 @@ const (
 	Preparing Stage = "preparing"
 	// Cloning materializes the immutable source.
 	Cloning Stage = "cloning"
-	// Verifying confirms configuration and workspace evidence.
+	// Verifying confirms physical working-directory confinement.
 	Verifying Stage = "verifying"
 	// Installing executes the repository installation/build command.
 	Installing Stage = "installing"
@@ -65,8 +65,8 @@ type Result struct {
 	ReadyAt   *time.Time `json:"readyAt,omitempty"`
 }
 
-// StageError retains error identity without putting commands, config, or remote
-// messages into its printed representation. Cleanup failure remains inspectable.
+// StageError retains error identity without putting commands, execution parameters,
+// or remote messages into its printed representation. Cleanup failure remains inspectable.
 type StageError struct {
 	Stage   Stage
 	Cause   error
@@ -91,7 +91,10 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 	if err != nil {
 		return result, err
 	}
-	if source == nil || rt == nil || rt.ID() == "" || !validCommit(plan.snapshot.CommitSHA) || plan.snapshot.SourceID == "" || plan.config.Version != 1 {
+	if source == nil || rt == nil || rt.ID() == "" {
+		return result, ErrSnapshotMismatch
+	}
+	if _, planErr := Restore(plan.snapshot, plan.spec); planErr != nil {
 		return result, ErrSnapshotMismatch
 	}
 	result.Snapshot = plan.snapshot
@@ -176,11 +179,11 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 	if err = verifyWorkspace(ctx, rt, result.Workspace, plan, options.StartTimeout); err != nil {
 		return result, err
 	}
-	cwd := path.Join(result.Workspace, plan.config.WorkingDirectory)
+	cwd := path.Join(result.Workspace, plan.spec.WorkingDirectory)
 	if err = transition(Installing); err != nil {
 		return result, err
 	}
-	if err = run(options.InstallTimeout, Command{Script: plan.config.InstallCommand, Directory: cwd, Env: cloneEnvironment(options.Env)}); err != nil {
+	if err = run(options.InstallTimeout, Command{Script: plan.spec.InstallCommand, Directory: cwd, Env: cloneEnvironment(options.Env)}); err != nil {
 		return result, err
 	}
 	if err = transition(Starting); err != nil {
@@ -193,7 +196,7 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 	}
 	startCtx, cancel := context.WithTimeout(ctx, options.StartTimeout)
 	logs = newOutputBuffer(Starting, options)
-	result.Process, err = rt.Start(startCtx, Command{Script: plan.config.StartCommand, Directory: cwd, Env: cloneEnvironment(options.Env), Tag: "deployd-" + options.OperationID}, logs.write)
+	result.Process, err = rt.Start(startCtx, Command{Script: plan.spec.StartCommand, Directory: cwd, Env: cloneEnvironment(options.Env), Tag: "deployd-" + options.OperationID}, logs.write)
 	cancel()
 	logs.flush()
 	if errors.Is(err, ErrConflict) {
@@ -215,7 +218,7 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 	if err = transition(Probing); err != nil {
 		return result, err
 	}
-	endpoint, endpointErr := rt.Endpoint(ctx, plan.config.Port)
+	endpoint, endpointErr := rt.Endpoint(ctx, plan.spec.Port)
 	err = endpointErr
 	if err != nil {
 		return result, err
@@ -225,7 +228,7 @@ func Apply(ctx context.Context, source Source, rt Runtime, plan Plan, options Op
 		return result, err
 	}
 	result.Endpoint = origin
-	if err = waitReady(ctx, rt, result.Process, origin+plan.config.Healthcheck.Path, plan.config.Healthcheck, options); err != nil {
+	if err = waitReady(ctx, rt, result.Process, origin+plan.spec.Healthcheck.Path, plan.spec.Healthcheck, options); err != nil {
 		return result, err
 	}
 	readyAt := time.Now().UTC()
@@ -248,11 +251,11 @@ func Stop(ctx context.Context, rt Runtime, ref ProcessRef) error {
 
 func normalizeOptions(options Options) (Options, error) {
 	if !path.IsAbs(options.WorkRoot) || path.Clean(options.WorkRoot) == "/" || strings.ContainsAny(options.WorkRoot, "\r\n\x00\\") || options.OperationID == "" || len(options.OperationID) > 64 || options.OperationID == "." || options.OperationID == ".." {
-		return options, ErrInvalidConfig
+		return options, ErrInvalidInput
 	}
 	for _, c := range options.OperationID {
 		if !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.", c) {
-			return options, ErrInvalidConfig
+			return options, ErrInvalidInput
 		}
 	}
 	options.WorkRoot = path.Clean(options.WorkRoot)
@@ -265,7 +268,7 @@ func normalizeOptions(options Options) (Options, error) {
 			*setting.value = setting.fallback
 		}
 		if *setting.value < 0 {
-			return options, ErrInvalidConfig
+			return options, ErrInvalidInput
 		}
 	}
 	options.Env = cloneEnvironment(options.Env)
@@ -288,9 +291,13 @@ func shellQuote(value string) string { return "'" + strings.ReplaceAll(value, "'
 func verifyWorkspace(ctx context.Context, rt Runtime, workspace string, plan Plan, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	configFile := path.Join(workspace, plan.snapshot.ConfigPath)
-	cwd := path.Join(workspace, plan.config.WorkingDirectory)
-	script := strings.Join([]string{"set -eu", "root=$(cd " + shellQuote(workspace) + " && pwd -P)", "config=$(realpath " + shellQuote(configFile) + ")", "case \"$config\" in \"$root\"/*) ;; *) exit 1 ;; esac", "test -f " + shellQuote(configFile), "test ! -L " + shellQuote(configFile), "cwd=$(cd " + shellQuote(cwd) + " && pwd -P)", "case \"$cwd\" in \"$root\"|\"$root\"/*) ;; *) exit 1 ;; esac", "if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum " + shellQuote(configFile) + "); else digest=$(shasum -a 256 " + shellQuote(configFile) + "); fi", "test \"${digest%% *}\" = " + shellQuote(strings.TrimPrefix(plan.snapshot.ConfigHash, "sha256:"))}, "\n")
+	cwd := path.Join(workspace, plan.spec.WorkingDirectory)
+	script := strings.Join([]string{
+		"set -eu",
+		"root=$(cd " + shellQuote(workspace) + " && pwd -P)",
+		"cwd=$(cd " + shellQuote(cwd) + " && pwd -P)",
+		"case \"$cwd\" in \"$root\"|\"$root\"/*) ;; *) exit 1 ;; esac",
+	}, "\n")
 	exit, err := rt.Run(ctx, Command{Script: script, Directory: workspace}, nil)
 	if err != nil {
 		return err
@@ -303,7 +310,7 @@ func verifyWorkspace(ctx context.Context, rt Runtime, workspace string, plan Pla
 func readinessOrigin(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return "", ErrInvalidConfig
+		return "", ErrInvalidInput
 	}
 	return strings.TrimRight(raw, "/"), nil
 }
@@ -327,7 +334,7 @@ func waitReady(ctx context.Context, rt Runtime, ref ProcessRef, rawURL string, h
 		}
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			return ErrInvalidConfig
+			return ErrInvalidInput
 		}
 		response, requestErr := client.Do(request)
 		if requestErr == nil {

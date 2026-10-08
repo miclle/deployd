@@ -3,7 +3,7 @@
 [中文](README.zh.md)
 
 A small Go deployment execution kernel for an already provisioned runtime.
-Resolve an immutable Git commit, strictly parse deployment YAML, execute the
+Bind an immutable Git commit to validated execution parameters, execute the
 installation/build script, start a foreground service, and wait for HTTP readiness.
 
 The import name is `deploy`; the module is `github.com/miclle/deployd`.
@@ -15,17 +15,17 @@ Go 1.25 or newer is required. The built-in local runtime supports Linux and macO
 go get github.com/miclle/deployd
 ```
 
-The caller selects the configuration path, commonly `deploy.yaml`:
+Applications read their own configuration from files, databases, APIs, or other
+sources and map it to execution parameters:
 
-```yaml
-version: 1
-workingDirectory: .
-installCommand: npm ci
-startCommand: npm run start -- --host 0.0.0.0 --port 3000
-port: 3000
-healthcheck:
-  path: /health
-  timeoutSeconds: 60
+```go
+spec := deploy.Spec{
+    WorkingDirectory: ".",
+    InstallCommand: "npm ci",
+    StartCommand: "npm run start -- --host 0.0.0.0 --port 3000",
+    Port: 3000,
+    Healthcheck: deploy.Healthcheck{Path: "/health", TimeoutSeconds: 60},
+}
 ```
 
 The execution flow is:
@@ -33,8 +33,8 @@ The execution flow is:
 ```go
 source, err := gitsource.New(repositoryURL, gitsource.Options{Ref: "main"})
 // Handle err before proceeding.
-plan, err := deploy.Prepare(ctx, source, "deploy.yaml")
-// Persist plan.Snapshot() and plan.ConfigBytes() after checking err.
+plan, err := deploy.Prepare(ctx, source, spec)
+// Persist plan.Snapshot() and plan.Spec() after checking err.
 // Supply an already provisioned Runtime.
 result, err := deploy.Apply(ctx, source, runtime, plan, deploy.Options{
     WorkRoot: "/srv/deployments",
@@ -48,15 +48,21 @@ err = deploy.Stop(cleanupCtx, runtime, result.Process)
 Use a bounded cleanup context and handle every error. See the [complete, compiled
 Go example](example_test.go), [controller takeover](docs/architecture.md#controller-takeover),
 [execution architecture](docs/architecture.md),
-[controller integration](docs/controller-integration.md), [configuration protocol](docs/configuration.md), and [adapters](docs/adapters.md).
+[controller integration](docs/controller-integration.md), [execution parameters](docs/configuration.md), and [adapters](docs/adapters.md).
 The Git adapter, local process runtime, and envd Process runtime are separate
 packages; callers can also implement `Source` and `Runtime`.
 
+For repository configuration, resolve the commit first, read the application's
+configuration at that exact commit, then call `deploy.NewPlan(resolved, spec)`.
+Persist the normalized Spec and Snapshot; `deploy.Restore(snapshot, spec)` requires
+no original configuration bytes. See the [migration notes](docs/controller-integration.md)
+for the breaking change from the previous YAML-based API.
+
 ## Ownership
 
-Applications own authentication, resource provisioning, task scheduling, durable
-state, concurrency, retry decisions, quotas, expiration, ingress, and resource
-destruction. The library owns immutable source/configuration evidence and the
+Applications own configuration formats/parsing, authentication, resource
+provisioning, task scheduling, durable state, concurrency, retry decisions, quotas,
+expiration, ingress, and resource destruction. The library owns immutable source/execution-parameter evidence and the
 execution protocol. A deployment stop terminates the application process while
 retaining its workspace and runtime. Scripts execute trusted repository code in
 the target account; choose isolation appropriate for that code.

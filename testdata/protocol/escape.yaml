@@ -1,5 +1,0 @@
-version: 1
-workingDirectory: ../outside
-installCommand: npm ci
-startCommand: npm run start
-port: 3000

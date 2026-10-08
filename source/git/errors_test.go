@@ -3,8 +3,6 @@ package git
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,22 +18,13 @@ func TestSafeSourceFailureCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = source.Resolve(context.Background(), "deploy.yaml")
+	_, err = source.Resolve(context.Background())
 	var exitError *deploy.CommandExitError
 	if !errors.Is(err, ErrFetchFailed) || !errors.Is(err, ErrCommandFailed) || !errors.As(err, &exitError) || exitError.Code == 0 {
 		t.Fatal("fetch failure lost classification", err)
 	}
-	source.options.Ref = "HEAD"
-	if _, err := source.Resolve(context.Background(), "missing.yaml"); !errors.Is(err, ErrConfigUnavailable) {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "deploy.yaml"), []byte(strings.Repeat("x", deploy.MaxConfigBytes+1)), 0600); err != nil {
-		t.Fatal(err)
-	}
-	gitCommand(t, directory, "add", "deploy.yaml")
-	gitCommand(t, directory, "commit", "--quiet", "-m", "oversize")
-	if _, err := source.Resolve(context.Background(), "deploy.yaml"); !errors.Is(err, ErrConfigUnavailable) || !errors.Is(err, ErrOutputLimit) {
-		t.Fatal(err)
+	if _, err := source.run(context.Background(), directory, 1, "rev-parse", "HEAD"); !errors.Is(err, ErrOutputLimit) {
+		t.Fatal("git output exceeded its operation bound", err)
 	}
 	// Executable absence is safe to classify, without exposing an OS error or PATH.
 	t.Setenv("PATH", t.TempDir())

@@ -228,7 +228,7 @@ func (r *Runtime) Endpoint(ctx context.Context, port int) (string, error) {
 		return "", err
 	}
 	if port < 1 || port > 65535 {
-		return "", deploy.ErrInvalidConfig
+		return "", deploy.ErrInvalidInput
 	}
 	endpoint, err := r.options.Endpoint(port)
 	if err != nil {

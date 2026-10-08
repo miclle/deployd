@@ -48,7 +48,7 @@ func gitRun(t *testing.T, dir string, args ...string) string {
 	}
 	return strings.TrimSpace(string(out))
 }
-func realFixture(t *testing.T, extra string) (*gitsource.Source, *local.Runtime, deploy.Plan, deploy.Options) {
+func realFixture(t *testing.T, change func(*deploy.Spec)) (*gitsource.Source, *local.Runtime, deploy.Plan, deploy.Options) {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -60,17 +60,26 @@ func realFixture(t *testing.T, extra string) (*gitsource.Source, *local.Runtime,
 	}
 	repo := t.TempDir()
 	gitRun(t, repo, "init", "--quiet")
-	cfg := fmt.Sprintf("version: 1\ninstallCommand: printf installed > installed.txt\nstartCommand: exec \"$SERVICE_BINARY\" -test.run '^TestHTTPServiceHelper$'\nport: %d\nhealthcheck:\n  path: /health\n  timeoutSeconds: 1\n%s", port, extra)
-	if err := os.WriteFile(filepath.Join(repo, "deploy.yaml"), []byte(cfg), 0600); err != nil {
+	spec := deploy.Spec{
+		InstallCommand: "printf installed > installed.txt",
+		StartCommand:   "exec \"$SERVICE_BINARY\" -test.run '^TestHTTPServiceHelper$'",
+		Port:           port,
+		Healthcheck:    deploy.Healthcheck{Path: "/health", TimeoutSeconds: 1},
+	}
+	if change != nil {
+		change(&spec)
+	}
+	// The repository deliberately has no deployment configuration file.
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("initial source"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	gitRun(t, repo, "add", "deploy.yaml")
+	gitRun(t, repo, "add", "README.md")
 	gitRun(t, repo, "commit", "--quiet", "-m", "initial")
 	source, err := gitsource.New(repo, gitsource.Options{AllowLocal: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := deploy.Prepare(context.Background(), source, "deploy.yaml")
+	plan, err := deploy.Prepare(context.Background(), source, spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,10 +96,10 @@ func realFixture(t *testing.T, extra string) (*gitsource.Source, *local.Runtime,
 	return source, runtime, plan, options
 }
 func TestIntegrationImmutableDeploymentAndStop(t *testing.T) {
-	source, runtime, plan, options := realFixture(t, "")
+	source, runtime, plan, options := realFixture(t, nil)
 	// Move HEAD after preparing the plan. Execution must still use the saved commit.
 	repo := plan.Snapshot().SourceID
-	if err := os.WriteFile(filepath.Join(repo, "deploy.yaml"), []byte("invalid newer configuration"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("newer source"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	gitRun(t, repo, "commit", "--quiet", "-am", "move head")
@@ -140,7 +149,7 @@ func TestIntegrationImmutableDeploymentAndStop(t *testing.T) {
 	}
 }
 func TestIntegrationFailedHealthCleanup(t *testing.T) {
-	source, runtime, plan, options := realFixture(t, "")
+	source, runtime, plan, options := realFixture(t, nil)
 	options.Env["SERVICE_FAIL"] = "1"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -154,7 +163,7 @@ func TestIntegrationFailedHealthCleanup(t *testing.T) {
 	}
 }
 func TestIntegrationCancellationAfterStart(t *testing.T) {
-	source, runtime, plan, options := realFixture(t, "")
+	source, runtime, plan, options := realFixture(t, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	options.OnStage = func(_ context.Context, stage deploy.Stage) error {
@@ -174,7 +183,6 @@ func TestIntegrationCancellationAfterStart(t *testing.T) {
 
 type changedSource struct {
 	deploy.Source
-	mode    string
 	outside string
 }
 
@@ -182,43 +190,54 @@ func (s changedSource) Materialize(ctx context.Context, rt deploy.Runtime, snaps
 	if err := s.Source.Materialize(ctx, rt, snapshot, workspace, output); err != nil {
 		return err
 	}
-	config := filepath.Join(workspace, snapshot.ConfigPath)
-	switch s.mode {
-	case "drift":
-		return os.WriteFile(config, []byte("changed"), 0600)
-	case "config symlink":
-		if err := os.Remove(config); err != nil {
-			return err
-		}
-		return os.Symlink(s.outside, config)
-	case "directory symlink":
-		return os.Symlink(s.outside, filepath.Join(workspace, "app"))
-	}
-	return nil
+	return os.Symlink(s.outside, filepath.Join(workspace, "app"))
 }
-func TestIntegrationRejectsSourceDriftAndSymlinks(t *testing.T) {
-	for _, mode := range []string{"drift", "config symlink", "directory symlink"} {
-		t.Run(mode, func(t *testing.T) {
-			extra := ""
-			if mode == "directory symlink" {
-				extra = "workingDirectory: app\n"
-			}
-			source, runtime, plan, options := realFixture(t, extra)
-			outside := t.TempDir()
-			if mode == "config symlink" {
-				outside = filepath.Join(outside, "config.yaml")
-				data, err := os.ReadFile(filepath.Join(plan.Snapshot().SourceID, "deploy.yaml"))
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(outside, data, 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			result, err := deploy.Apply(context.Background(), changedSource{Source: source, mode: mode, outside: outside}, runtime, plan, options)
-			if !errors.Is(err, deploy.ErrSnapshotMismatch) || result.Process.ID != "" {
-				t.Fatal("unsafe workspace executed", result, err)
-			}
-		})
+
+func TestIntegrationRejectsDirectorySymlink(t *testing.T) {
+	source, runtime, plan, options := realFixture(t, func(s *deploy.Spec) { s.WorkingDirectory = "app" })
+	outside := t.TempDir()
+	result, err := deploy.Apply(context.Background(), changedSource{Source: source, outside: outside}, runtime, plan, options)
+	var stageError *deploy.StageError
+	if !errors.Is(err, deploy.ErrSnapshotMismatch) || !errors.As(err, &stageError) || stageError.Stage != deploy.Verifying || result.Process.Tag != "" {
+		t.Fatal("unsafe workspace executed", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "installed.txt")); !os.IsNotExist(err) {
+		t.Fatal("installation escaped workspace", err)
+	}
+}
+
+func TestIntegrationRejectsPostInstallDirectoryEscape(t *testing.T) {
+	outside := t.TempDir()
+	// The directory exists after checkout, then installation replaces it with a
+	// symlink. No service may start in the replacement directory.
+	source, runtime, plan, options := realFixture(t, func(s *deploy.Spec) {
+		s.WorkingDirectory = "app"
+		s.InstallCommand = "cd .. && rmdir app && ln -s \"$OUTSIDE\" app"
+		s.StartCommand = "touch started; " + s.StartCommand
+	})
+	repo := plan.Snapshot().SourceID
+	if err := os.Mkdir(filepath.Join(repo, "app"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "app", ".keep"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, repo, "add", "app")
+	gitRun(t, repo, "commit", "--quiet", "-m", "working directory")
+	spec := plan.Spec()
+	spec.InstallCommand = "rm .keep; " + spec.InstallCommand
+	var err error
+	plan, err = deploy.Prepare(context.Background(), source, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options.Env["OUTSIDE"] = outside
+	result, err := deploy.Apply(context.Background(), source, runtime, plan, options)
+	var stageError *deploy.StageError
+	if !errors.Is(err, deploy.ErrSnapshotMismatch) || !errors.As(err, &stageError) || stageError.Stage != deploy.Starting || result.Process.Tag != "" {
+		t.Fatal("unsafe post-install directory executed", result, err)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "started")); !os.IsNotExist(err) {
+		t.Fatal("service started outside workspace", err)
 	}
 }

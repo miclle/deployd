@@ -181,18 +181,18 @@ func TestApplyStageFailuresAndCleanup(t *testing.T) {
 		{"workspace failure", func(_ *engineSource, r *engineRuntime) { r.runFailure = 1; r.runErr = context.Canceled }, context.Canceled, Preparing, false},
 		{"workspace exit", func(_ *engineSource, r *engineRuntime) { r.runFailure = 1; r.runCode = 1 }, nil, Preparing, false},
 		{"source failure", func(s *engineSource, _ *engineRuntime) { s.err = ErrSnapshotMismatch }, ErrSnapshotMismatch, Cloning, false},
-		{"config drift", func(_ *engineSource, r *engineRuntime) { r.runFailure = 2; r.runCode = 1 }, ErrSnapshotMismatch, Verifying, false},
+		{"directory escape", func(_ *engineSource, r *engineRuntime) { r.runFailure = 2; r.runCode = 1 }, ErrSnapshotMismatch, Verifying, false},
 		{"verify error", func(_ *engineSource, r *engineRuntime) { r.runFailure = 2; r.runErr = context.DeadlineExceeded }, context.DeadlineExceeded, Verifying, false},
 		{"install exit", func(_ *engineSource, r *engineRuntime) { r.runFailure = 3; r.runCode = 7 }, nil, Installing, false},
 		{"install error", func(_ *engineSource, r *engineRuntime) { r.runFailure = 3; r.runErr = context.DeadlineExceeded }, context.DeadlineExceeded, Installing, false},
-		{"post install drift", func(_ *engineSource, r *engineRuntime) { r.runFailure = 4; r.runCode = 1 }, ErrSnapshotMismatch, Starting, false},
+		{"post install directory escape", func(_ *engineSource, r *engineRuntime) { r.runFailure = 4; r.runCode = 1 }, ErrSnapshotMismatch, Starting, false},
 		{"unknown start", func(_ *engineSource, r *engineRuntime) { r.startErr = ErrProcessUnknown; r.partial = true }, ErrProcessUnknown, Starting, true},
 		{"existing start", func(_ *engineSource, r *engineRuntime) { r.startErr = ErrConflict; r.partial = true }, ErrConflict, Starting, false},
 		{"failed start", func(_ *engineSource, r *engineRuntime) { r.startErr = ErrProcessExited }, ErrProcessExited, Starting, false},
 		{"bad ref", func(_ *engineSource, r *engineRuntime) { r.badRef = true }, ErrProcessUnknown, Starting, true},
 		{"missing PID", func(_ *engineSource, r *engineRuntime) { r.missingPID = true }, ErrProcessUnknown, Starting, true},
 		{"endpoint", func(_ *engineSource, r *engineRuntime) { r.endpointErr = context.Canceled }, context.Canceled, Probing, true},
-		{"credential endpoint", func(_ *engineSource, r *engineRuntime) { r.endpoint = "https://secret@example.com" }, ErrInvalidConfig, Probing, true},
+		{"credential endpoint", func(_ *engineSource, r *engineRuntime) { r.endpoint = "https://secret@example.com" }, ErrInvalidInput, Probing, true},
 		{"inspect", func(_ *engineSource, r *engineRuntime) { r.inspectErr = ErrProcessUnknown }, ErrProcessUnknown, Probing, true},
 		{"early exit", func(_ *engineSource, r *engineRuntime) { r.exited = true }, ErrProcessExited, Probing, true},
 		{"exit after HTTP", func(_ *engineSource, r *engineRuntime) { r.exitOnSecond = true }, ErrProcessExited, Probing, true},
@@ -239,14 +239,14 @@ func TestApplyInvalidInputs(t *testing.T) {
 	for _, root := range []string{"", ".", "/", "/x/..", "/x\ny", "/x\\y"} {
 		bad := o
 		bad.WorkRoot = root
-		if _, err := Apply(context.Background(), s, r, p, bad); !errors.Is(err, ErrInvalidConfig) {
+		if _, err := Apply(context.Background(), s, r, p, bad); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("root %q: %v", root, err)
 		}
 	}
 	for _, id := range []string{"", ".", "..", "../outside", "foo/bar", strings.Repeat("x", 65), "a\n"} {
 		bad := o
 		bad.OperationID = id
-		if _, err := Apply(context.Background(), s, r, p, bad); !errors.Is(err, ErrInvalidConfig) {
+		if _, err := Apply(context.Background(), s, r, p, bad); !errors.Is(err, ErrInvalidInput) {
 			t.Fatal(err)
 		}
 	}
@@ -265,6 +265,18 @@ func TestApplyInvalidInputs(t *testing.T) {
 	}
 	if _, err := Apply(context.Background(), s, r, Plan{}, o); !errors.Is(err, ErrSnapshotMismatch) {
 		t.Fatal(err)
+	}
+	for _, change := range []func(*Plan){
+		func(p *Plan) { p.spec.Port++ },
+		func(p *Plan) { p.spec.Healthcheck.TimeoutSeconds = 0 },
+		func(p *Plan) { p.spec.StartCommand = "" },
+		func(p *Plan) { p.snapshot.Version++ },
+	} {
+		bad := p
+		change(&bad)
+		if _, err := Apply(context.Background(), s, r, bad, o); !errors.Is(err, ErrSnapshotMismatch) || r.runs != 0 {
+			t.Fatal("invalid plan executed", err)
+		}
 	}
 	for _, ref := range []ProcessRef{{}, {RuntimeID: "other", Tag: "t"}} {
 		if err := Stop(context.Background(), r, ref); !errors.Is(err, ErrRuntimeMismatch) {

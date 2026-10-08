@@ -4,7 +4,7 @@
 
 ## Git 源码
 
-`source/git.New` 接受不含凭证的 HTTPS 仓库 URL，以及分支、Tag、完整 SHA 或 `HEAD`。控制进程和运行环境均需安装 Git。解析使用临时仓库、默认五分钟时限、有界 Blob 读取，且配置必须是普通文件。源码准备只拉取保存的 SHA 并校验 HEAD，不再读取原始可变引用。
+`source/git.New` 接受不含凭证的 HTTPS 仓库 URL，以及分支、Tag、完整 SHA 或 `HEAD`。控制进程和运行环境均需安装 Git。解析使用临时仓库、默认五分钟时限和有界 Git 响应，只返回仓库身份与完整提交；应用自行从该提交读取所需配置。源码准备只拉取保存的 SHA 并校验 HEAD，不再读取原始可变引用。
 
 本地绝对路径要求显式设置 `AllowLocal: true`，仅用于可信本地执行。`Env`、`CheckoutEnv` 分别提供控制进程和目标环境的临时 Git 认证环境；控制进程的凭证 Helper 不会自动出现在远端。调用方负责仓库 Host 白名单和私有源码授权。Git 错误丢弃 stderr，输出有界并根据 CheckoutEnv 脱敏。
 

@@ -23,10 +23,15 @@ tokens into test arguments, commit them, or include environment dumps in reports
 | `DEPLOYD_ENVD_REPOSITORY` | Trusted public HTTPS fixture repository, for the deployment test |
 | `DEPLOYD_ENVD_COMMIT` | Full pinned commit, for the deployment test |
 | `DEPLOYD_ENVD_WORK_ROOT` | Dedicated absolute deployment directory, for the deployment test |
-| `DEPLOYD_ENVD_CONFIG_PATH` | Optional repository configuration path, defaults to `deploy.yaml` |
+| `DEPLOYD_ENVD_INSTALL_COMMAND` | Required trusted installation/build script, without credentials |
+| `DEPLOYD_ENVD_START_COMMAND` | Required trusted foreground service script, without credentials |
+| `DEPLOYD_ENVD_PORT` | Required integer service port from 1 to 65535 |
+| `DEPLOYD_ENVD_WORKING_DIRECTORY` | Optional repository-relative directory, defaults to `.` |
+| `DEPLOYD_ENVD_HEALTH_PATH` | Optional readiness path, defaults to `/`; deadline is 60 seconds |
 
 Missing configuration after opt-in fails instead of silently skipping. The
-deployment fixture must bind its configured port and return 2xx at its health
+deployment suite maps these inputs to Spec; no repository configuration file is
+required. The fixture must bind its supplied port and return 2xx at its health
 path. No private-source credential handling is tested by this public fixture.
 
 ```sh
@@ -38,7 +43,7 @@ The process suite checks tools/permissions, cancellation of finite commands and
 their descendants, process survival after stream/request closure, reconstruction
 of an adapter, tag-only reconciliation, rejection of a foreign tag, and confirmed
 stop. It removes only its randomly named `/tmp/deployd-acceptance-*` directories.
-The deployment suite checks pinned Git checkout, configuration verification,
+The deployment suite checks pinned Git checkout, execution-parameter and working-directory verification,
 installation, foreground start, routed HTTP readiness and reconstructed-adapter
 stop. Deployment workspaces remain for diagnosis; the caller owns their retention.
 

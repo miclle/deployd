@@ -3,14 +3,12 @@ package git
 import "errors"
 
 var (
-	// ErrInvalidInput identifies invalid source options or configuration paths.
+	// ErrInvalidInput identifies invalid source options.
 	ErrInvalidInput = errors.New("invalid git source input")
 	// ErrFetchFailed identifies a failed pinned/reference fetch. Authentication,
 	// missing refs and transport failures cannot be distinguished without stderr;
 	// this classification does not promise a transient failure or safe retry.
 	ErrFetchFailed = errors.New("git source fetch failed")
-	// ErrConfigUnavailable identifies missing, nonregular, unreadable or oversized config.
-	ErrConfigUnavailable = errors.New("git source configuration unavailable")
 	// ErrOutputLimit identifies a response that exceeded its operation's byte limit.
 	ErrOutputLimit = errors.New("git source output limit exceeded")
 	// ErrCommandFailed identifies a failed controller-side Git command.

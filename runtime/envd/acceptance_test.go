@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,7 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 	rt := liveRuntime(t, options)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	exit, err := rt.Run(ctx, deploy.Command{Script: "set -eu\nfor tool in git realpath setsid ps sleep; do command -v \"$tool\" >/dev/null; done\ncommand -v sha256sum >/dev/null || command -v shasum >/dev/null"}, nil)
+	exit, err := rt.Run(ctx, deploy.Command{Script: "set -eu\nfor tool in git setsid ps sleep; do command -v \"$tool\" >/dev/null; done"}, nil)
 	if err != nil || exit.Code != 0 {
 		t.Fatal("target prerequisites failed", exit.Code, err)
 	}
@@ -148,7 +149,7 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 
 func TestLiveEnvdDeployment(t *testing.T) {
 	options := liveOptions(t)
-	for _, name := range []string{"DEPLOYD_ENVD_REPOSITORY", "DEPLOYD_ENVD_COMMIT", "DEPLOYD_ENVD_WORK_ROOT"} {
+	for _, name := range []string{"DEPLOYD_ENVD_REPOSITORY", "DEPLOYD_ENVD_COMMIT", "DEPLOYD_ENVD_WORK_ROOT", "DEPLOYD_ENVD_INSTALL_COMMAND", "DEPLOYD_ENVD_START_COMMAND", "DEPLOYD_ENVD_PORT"} {
 		if os.Getenv(name) == "" {
 			t.Fatalf("required deployment acceptance environment variable %s is missing", name)
 		}
@@ -166,13 +167,20 @@ func TestLiveEnvdDeployment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	configPath := os.Getenv("DEPLOYD_ENVD_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "deploy.yaml"
+	port, err := strconv.Atoi(os.Getenv("DEPLOYD_ENVD_PORT"))
+	if err != nil {
+		t.Fatal("deployment acceptance requires an integer port")
+	}
+	spec := deploy.Spec{
+		WorkingDirectory: os.Getenv("DEPLOYD_ENVD_WORKING_DIRECTORY"),
+		InstallCommand:   os.Getenv("DEPLOYD_ENVD_INSTALL_COMMAND"),
+		StartCommand:     os.Getenv("DEPLOYD_ENVD_START_COMMAND"),
+		Port:             port,
+		Healthcheck:      deploy.Healthcheck{Path: os.Getenv("DEPLOYD_ENVD_HEALTH_PATH")},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	plan, err := deploy.Prepare(ctx, source, configPath)
+	plan, err := deploy.Prepare(ctx, source, spec)
 	if err != nil {
 		t.Fatal(err)
 	}

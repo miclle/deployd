@@ -1,10 +1,11 @@
 package deploy
 
 import (
-	"sort"
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/miclle/deployd/internal/redact"
 )
 
 // MaxOutputBytes bounds retained application output per execution stage.
@@ -67,7 +68,6 @@ func (b *outputBuffer) flush() {
 		return
 	}
 	secrets := append([]string(nil), b.options.Redact...)
-	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
 	// Merge each stream before redaction so a credential split between transport
 	// chunks cannot leak. Stream order is stdout then stderr, not exact interleaving.
 	for _, stream := range []Stream{Stdout, Stderr} {
@@ -77,16 +77,7 @@ func (b *outputBuffer) flush() {
 				data = append(data, chunk.data...)
 			}
 		}
-		if truncated && len(secrets) > 0 && len(secrets[0]) > 1 {
-			keep := max(0, len(data)-len(secrets[0])+1)
-			data = data[:keep]
-		}
-		text := string(data)
-		for _, secret := range secrets {
-			if secret != "" {
-				text = strings.ReplaceAll(text, secret, "[REDACTED]")
-			}
-		}
+		text := string(redact.Bytes(data, secrets, truncated))
 		text = strings.ToValidUTF8(text, "�")
 		for len(text) > 0 {
 			n := min(len(text), 4096)

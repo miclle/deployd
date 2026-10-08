@@ -78,7 +78,8 @@ func New(options Options) (*Runtime, error) {
 func (r *Runtime) ID() string { return r.options.RuntimeID }
 
 // Run reads bounded envelopes without retaining combined command output. On
-// cancellation or protocol failure after a PID is observed it attempts Stop.
+// cancellation or protocol failure it reconciles the unique execution tag before
+// attempting Stop, even if no PID frame arrived.
 func (r *Runtime) Run(ctx context.Context, command deploy.Command, output deploy.Output) (deploy.Exit, error) {
 	command.Tag = "deployd-command-" + rand.Text()
 	exit, err := r.execute(ctx, command, output, nil)
@@ -125,16 +126,6 @@ func (r *Runtime) execute(ctx context.Context, command deploy.Command, output de
 		return exit, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	var pid uint32
-	defer func() {
-		if err != nil && pid != 0 {
-			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
-			defer cancel()
-			if stopErr := r.signal(cleanup, pid); stopErr != nil {
-				err = errors.Join(err, deploy.ErrProcessUnknown)
-			}
-		}
-	}()
 	for {
 		data, flags, readErr := readEnvelope(resp.Body)
 		if readErr != nil {
@@ -157,7 +148,7 @@ func (r *Runtime) execute(ctx context.Context, command deploy.Command, output de
 		}
 		event := message.Event
 		if event.Start != nil {
-			pid = event.Start.PID
+			pid := event.Start.PID
 			if pid == 0 {
 				return exit, ErrProtocol
 			}
@@ -315,12 +306,13 @@ func (r *Runtime) signal(ctx context.Context, pid uint32) error {
 
 func supervisedScript(script string) string {
 	// setsid runs the workload in a new session whose group ID is the child PID.
-	// The foreground supervisor retains that PID until cleanup finishes. Scripts
-	// must remain in the foreground and must not escape into another session.
+	// Cancellation freezes the child before signalling its group: setsid cannot
+	// create a new session between the group kill and pre-session PID fallback.
+	// Scripts must stay in the foreground and not escape into another session.
 	// The -s form permits -- before a negative group ID in both dash and bash.
 	return "command -v setsid >/dev/null 2>&1 || exit 127\n" +
-		"child=\ncleanup() { child=${child:-$!}; if [ -n \"$child\" ]; then kill -s KILL -- \"-$child\" 2>/dev/null || :; wait \"$child\" 2>/dev/null || :; fi; }\n" +
-		"trap cleanup 0\ntrap 'exit 143' TERM\ntrap 'exit 130' INT\ntrap 'exit 129' HUP\n" +
+		"child=\nstopping=0\ncleanup() { child=${child:-$!}; if [ -n \"$child\" ]; then if [ \"$stopping\" = 1 ]; then kill -s STOP \"$child\" 2>/dev/null || :; fi; kill -s KILL -- \"-$child\" 2>/dev/null || { if [ \"$stopping\" = 1 ]; then kill -s KILL \"$child\" 2>/dev/null || :; fi; }; wait \"$child\" 2>/dev/null || :; fi; }\n" +
+		"trap cleanup 0\ntrap 'stopping=1; exit 143' TERM\ntrap 'stopping=1; exit 130' INT\ntrap 'stopping=1; exit 129' HUP\n" +
 		"setsid /bin/sh -c '" + strings.ReplaceAll(script, "'", "'\"'\"'") + "' &\n" +
 		"child=$!\nwait \"$child\"\nstatus=$?\nexit \"$status\""
 }

@@ -7,8 +7,8 @@
 `make lint` checks gofmt, errcheck, govet, ineffassign, staticcheck, and unused code.
 `make test` runs race detection without cached results. `make coverage` emits
 `coverage.out` (ignored by Git), per-function coverage, and a per-package gate:
-core at least 95%, each adapter at least 90%. All three CI Go versions (1.25, 1.26,
-and 1.27) enforce this gate.
+core at least 95%, each adapter and internal helper package at least 90%. All three
+CI Go versions (1.25, 1.26, and 1.27) enforce this gate.
 If a newer local Go toolchain exceeds the linter's build version, choose a compatible
 `GOTOOLCHAIN` or install a compatible linter; never silently skip lint.
 
@@ -19,10 +19,10 @@ If a newer local Go toolchain exceeds the linter's build version, choose a compa
 | Configuration | Strict schema, UTF-8, size/depth, aliases, duplicates, version, defaults, escaping paths and health URLs |
 | Planning | Immutable source/config copies, exact digest, restore, mutable-input changes, invalid evidence |
 | Engine | All stage acknowledgement failures, deadlines/cancellation, script errors, uncertain/mismatched starts, process exits, readiness redirects/failures, cleanup errors |
-| Output | Bounds, split/overlapping secret values, truncation, UTF-8 chunk boundaries, late callbacks |
+| Output | Bounds, split/overlapping secret values, complete and partial credentials at truncation boundaries, UTF-8 chunk boundaries, late callbacks |
 | Git | Real local repository, moved HEAD after resolution, pinned checkout, symlink/oversized config, failures, timeout and bounded/redacted output |
-| Local runtime | Real processes, detached lifetime, finite cancellation, group cleanup, process/tag identity, close and observed exit codes |
-| envd runtime | HTTP protocol fixtures, stream framing, authentication, PID/exit events, inspection/signals, stale and ambiguous tags, missing/malformed/oversized responses, redirects, lost-PID cleanup, stop deadlines, real supervisor/child cleanup |
+| Local runtime | Real processes, detached lifetime, finite cancellation, group cleanup before leader reaping, process/tag identity, external supervisor termination, close and observed exit codes |
+| envd runtime | HTTP protocol fixtures, stream framing, authentication, PID/exit events, inspection/signals, stale and ambiguous tags, missing/malformed/oversized responses, redirects, lost-PID cleanup, reused-PID stream failures, stop deadlines, real supervisor/child cleanup before and after session creation |
 | End to end | Real Git + HTTP service: fixed commit, install artifact, readiness, duplicate attempt, stop, health failure cleanup, cancellation after start, configuration drift and symlink confinement |
 
 The complete Go example is compile-checked; its placeholder repository is not

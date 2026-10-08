@@ -58,7 +58,9 @@ Readiness neither proves public ingress nor continuously monitors availability.
 
 Each stage retains at most 64 KiB of raw output across both streams. Stage-end
 callbacks merge each stream before replacing explicit `Redact` values and transient
-environment values, including secrets split across transport chunks. Events contain
+environment values, including secrets split across transport chunks.
+Overlapping matches and incomplete credential prefixes at a truncated stream
+boundary are redacted before output is emitted. Events contain
 at most 4 KiB of valid UTF-8, stdout before stderr, plus a truncation marker when
 needed. Exact stream interleaving is not retained. Startup observation ends after
 PID confirmation; a late output callback is discarded after stage completion.

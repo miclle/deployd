@@ -5,7 +5,12 @@ package local
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -143,5 +148,114 @@ func TestCompletedFiniteCommandsReleaseRecords(t *testing.T) {
 	defer rt.mu.Unlock()
 	if len(rt.processes) != 0 || len(rt.tags) != 0 {
 		t.Fatal("completed finite commands retained by host runtime")
+	}
+}
+
+func TestGroupLeaderRemainsReservedUntilCleanup(t *testing.T) {
+	rt := runtimeFor(t)
+	root := t.TempDir()
+	release, childFile := filepath.Join(root, "release"), filepath.Join(root, "child")
+	ref, err := rt.Start(context.Background(), deploy.Command{
+		Script: "while [ ! -f \"$RELEASE\" ]; do sleep 0.01; done\nsleep 60 &\nprintf '%s' \"$!\" > \"$CHILD\"\nexit 7",
+		Tag:    "normal-exit",
+		Env:    map[string]string{"RELEASE": release, "CHILD": childFile},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Hold cleanup at its mutex while the workload exits. The supervisor must
+	// remain alive, reserving the PID rather than reaping before the group kill.
+	func() {
+		rt.mu.Lock()
+		defer rt.mu.Unlock()
+		if err := os.WriteFile(release, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			state, _ := exec.Command("ps", "-p", ref.ID, "-o", "stat=").Output()
+			value := strings.TrimSpace(string(state))
+			if strings.Contains(value, "T") {
+				return
+			}
+			if value == "" || strings.HasPrefix(value, "Z") {
+				t.Fatal("group leader exited before cleanup reserved its identity")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Fatal("workload did not finish")
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rt.Stop(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	state, err := rt.Inspect(ctx, ref)
+	if err != nil || state.ExitCode == nil || *state.ExitCode != 7 {
+		t.Fatalf("workload exit was not preserved: %+v %v", state, err)
+	}
+	data, err := os.ReadFile(childFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := strconv.Atoi(string(data))
+	if err != nil || child <= 0 {
+		t.Fatal("missing child identity")
+	}
+	childState, _ := exec.Command("ps", "-p", strconv.Itoa(child), "-o", "stat=").Output()
+	if value := strings.TrimSpace(string(childState)); value != "" && !strings.HasPrefix(value, "Z") {
+		t.Fatal("normal exit left a descendant running")
+	}
+}
+
+func TestExternalSupervisorExitStillCleansGroup(t *testing.T) {
+	rt := runtimeFor(t)
+	childFile := filepath.Join(t.TempDir(), "child")
+	ref, err := rt.Start(context.Background(), deploy.Command{Script: "sleep 60 & printf '%s' \"$!\" > \"$CHILD\"; wait", Tag: "external-exit", Env: map[string]string{"CHILD": childFile}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var child int
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(childFile)
+		child, _ = strconv.Atoi(string(data))
+		if child > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if child == 0 {
+		t.Fatal("workload did not start its descendant")
+	}
+	rt.mu.Lock()
+	e := rt.processes[ref.ID]
+	if emptyProcessGroup(context.Background(), e.command.Process.Pid) {
+		rt.mu.Unlock()
+		t.Fatal("running supervisor group was reported empty")
+	}
+	if err := e.command.Process.Signal(syscall.SIGKILL); err != nil {
+		rt.mu.Unlock()
+		t.Fatal(err)
+	}
+	rt.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := rt.Stop(ctx, ref); err != nil {
+		t.Fatal(err)
+	}
+	if state, err := rt.Inspect(ctx, ref); err != nil || state.Running {
+		t.Fatal(state, err)
+	}
+	childState, _ := exec.Command("ps", "-p", strconv.Itoa(child), "-o", "stat=").Output()
+	if value := strings.TrimSpace(string(childState)); value != "" && !strings.HasPrefix(value, "Z") {
+		t.Fatal("external supervisor termination left a descendant running")
+	}
+}
+
+func TestObservedExitPreservesUnexpectedWaitError(t *testing.T) {
+	wanted := errors.New("output copy failed")
+	if _, err := observedExit(wanted); !errors.Is(err, wanted) {
+		t.Fatal("unexpected wait failure was discarded", err)
 	}
 }

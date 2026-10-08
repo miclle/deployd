@@ -372,3 +372,17 @@ func TestOutputUTF8Boundaries(t *testing.T) {
 		t.Fatal("output changed at chunk boundary")
 	}
 }
+
+func TestOutputTruncationDoesNotSplitCompleteCredentials(t *testing.T) {
+	var got strings.Builder
+	b := newOutputBuffer(Installing, Options{Redact: []string{"secret"}, OnOutput: func(event OutputEvent) {
+		if !event.Truncated {
+			got.WriteString(event.Message)
+		}
+	}})
+	b.write(Stdout, []byte(strings.Repeat("x", MaxOutputBytes-8)+"secretYZ!"))
+	b.flush()
+	if strings.Contains(got.String(), "sec") || !strings.HasSuffix(got.String(), "[REDACTED]YZ") {
+		t.Fatal("complete credential was split by truncation")
+	}
+}

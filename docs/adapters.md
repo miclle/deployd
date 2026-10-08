@@ -22,7 +22,13 @@ Git errors discard stderr and output is bounded and redacted against CheckoutEnv
 intended for trusted development/testing or deployment agents with external isolation.
 Finite commands are cancellation-owned; detached services use independent process
 groups. Stop verifies the in-memory runtime/process/tag tuple and kills the owned
-group. Close stops owned workloads. Records do not survive a controller restart.
+group. A supervisor reports the workload exit through a private pipe and retains
+the group leader until cleanup finishes; the runtime kills the group before reaping
+the leader so its PID cannot be reused during signalling. Application scripts do
+not inherit the exit-report descriptor. On macOS, `/bin/ps` verifies an empty group
+when an external supervisor exit makes the kernel return `EPERM`; the check is
+bounded by the cleanup context and one second. Close stops owned workloads.
+Records do not survive a controller restart.
 
 ## envd runtime
 
@@ -37,10 +43,13 @@ The Linux agent must provide `setsid` and a POSIX shell whose `kill` supports
 negative process-group IDs. Group cleanup uses `kill -s KILL -- -PGID`, compatible
 with dash and bash. A supervisor starts the workload in its own session.
 Stop sends TERM to that supervisor, which kills/reaps its group before exiting;
-normal exit also clears remaining children. Foreground scripts must not daemonize
-or escape to another session. Finite-command failures reconcile a unique tag even
-when the initial PID response was lost. Observed nonzero exits retain their code
-without retaining the agent error string.
+normal exit also clears remaining children. Cancellation freezes the child before
+the group signal, with a direct PID fallback if `setsid` has not created the group
+yet; a canceled startup cannot subsequently launch the service. Foreground scripts
+must not daemonize or escape to another session. Finite-command failures reconcile a unique tag even
+when the initial PID response was lost. Stream failures never signal an observed
+PID without reconciling the execution tag first. Observed nonzero exits retain
+their code without retaining the agent error string.
 
 Inspect/Stop verify runtime, PID, and tag; uncertain starts can be reconciled by a
 unique tag. Agent APIs do not provide atomic compare-and-signal fencing: callers

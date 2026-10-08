@@ -210,3 +210,13 @@ func TestMaterializeFailureClassification(t *testing.T) {
 		t.Fatal("truncated credential leaked")
 	}
 }
+
+func TestGitTruncationDoesNotSplitCompleteCredentials(t *testing.T) {
+	var got strings.Builder
+	c := newCapture(func(_ deploy.Stream, data []byte) { got.Write(data) }, map[string]string{"TOKEN": "secret"})
+	c.write(deploy.Stdout, []byte(strings.Repeat("x", 64*1024-8)+"secretYZ!"))
+	c.flush()
+	if strings.Contains(got.String(), "sec") || !strings.Contains(got.String(), "[REDACTED]YZ") {
+		t.Fatal("complete credential was split by truncation")
+	}
+}

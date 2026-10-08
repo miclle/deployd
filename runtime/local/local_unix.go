@@ -5,6 +5,7 @@
 package local
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -33,7 +35,9 @@ type entry struct {
 	ref     deploy.ProcessRef
 	command *exec.Cmd
 	done    chan struct{}
+	killed  chan struct{}
 	exit    int
+	err     error
 }
 
 // New creates an in-process runtime with a caller-selected stable identity.
@@ -76,8 +80,9 @@ func (r *Runtime) Run(ctx context.Context, command deploy.Command, output deploy
 	case <-e.done:
 		r.mu.Lock()
 		code := e.exit
+		err := e.err
 		r.mu.Unlock()
-		return deploy.Exit{Code: code}, nil
+		return deploy.Exit{Code: code}, err
 	case <-ctx.Done():
 		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
@@ -98,27 +103,50 @@ func (r *Runtime) Start(ctx context.Context, command deploy.Command, output depl
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return deploy.ProcessRef{}, err
+	}
 	if r.closed {
 		return deploy.ProcessRef{}, deploy.ErrRuntimeMismatch
 	}
 	if _, exists := r.tags[command.Tag]; exists {
 		return deploy.ProcessRef{}, deploy.ErrConflict
 	}
-	cmd := makeCommand(command, output)
-	if err := cmd.Start(); err != nil {
+	status, report, err := os.Pipe()
+	if err != nil {
 		return deploy.ProcessRef{}, errors.New("local service start failed")
 	}
+	cmd := makeCommand(command, output, report)
+	if err := cmd.Start(); err != nil {
+		_ = status.Close()
+		_ = report.Close()
+		return deploy.ProcessRef{}, errors.New("local service start failed")
+	}
+	_ = report.Close()
 	ref := deploy.ProcessRef{RuntimeID: r.id, ID: strconv.Itoa(cmd.Process.Pid), Tag: command.Tag}
-	e := &entry{ref: ref, command: cmd, done: make(chan struct{})}
+	e := &entry{ref: ref, command: cmd, done: make(chan struct{}), killed: make(chan struct{})}
 	r.processes[ref.ID] = e
 	r.tags[ref.Tag] = ref.ID
 	go func() {
+		// The supervisor reports the workload's exit while remaining the group
+		// leader. Do not reap it until group cleanup has reserved its PID for the
+		// entire signal operation, including external supervisor termination.
+		line, readErr := bufio.NewReader(io.LimitReader(status, 16)).ReadString('\n')
+		_ = status.Close()
+		code, parseErr := strconv.Atoi(strings.TrimSpace(line))
+		r.mu.Lock()
+		_ = killEntry(context.Background(), e)
+		r.mu.Unlock()
+		// A failed signal leaves the entry available to Stop/Close for retry.
+		<-e.killed
 		err := cmd.Wait()
-		exit, _ := observedExit(err)
+		exit, waitErr := observedExit(err)
 		r.mu.Lock()
 		e.exit = exit.Code
-		// Prevent an exited parent from leaving its children behind.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		e.err = waitErr
+		if readErr == nil && parseErr == nil && code >= 0 && code <= 255 {
+			e.exit = code
+		}
 		close(e.done)
 		r.mu.Unlock()
 	}()
@@ -149,6 +177,11 @@ func (r *Runtime) Inspect(ctx context.Context, ref deploy.ProcessRef) (deploy.Pr
 func (r *Runtime) Stop(ctx context.Context, ref deploy.ProcessRef) error {
 	r.mu.Lock()
 	e, err := r.lookup(ref)
+	if err != nil {
+		r.mu.Unlock()
+		return err
+	}
+	err = killEntry(ctx, e)
 	r.mu.Unlock()
 	if err != nil {
 		return err
@@ -156,18 +189,28 @@ func (r *Runtime) Stop(ctx context.Context, ref deploy.ProcessRef) error {
 	select {
 	case <-e.done:
 		return nil
-	default:
-	}
-	// Never signal a completed entry whose PID could have been reused.
-	if err := syscall.Kill(-e.command.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
-		return errors.New("local process stop failed")
-	}
-	select {
-	case <-e.done:
-		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// killEntry runs with the runtime mutex held. The waiter cannot reap the leader
+// until this succeeds, and completed cleanup is never signalled a second time.
+func killEntry(ctx context.Context, e *entry) error {
+	select {
+	case <-e.killed:
+		return nil
+	default:
+	}
+	if err := syscall.Kill(-e.command.Process.Pid, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+		// Darwin can report EPERM for an empty group after an external kill.
+		// Verify absence instead of treating genuine permission failures as exit.
+		if !errors.Is(err, syscall.EPERM) || !emptyProcessGroup(ctx, e.command.Process.Pid) {
+			return errors.New("local process stop failed")
+		}
+	}
+	close(e.killed)
+	return nil
 }
 
 // Endpoint returns a loopback HTTP readiness origin, not a public URL.
@@ -215,8 +258,13 @@ func (r *Runtime) lookup(ref deploy.ProcessRef) (*entry, error) {
 	}
 	return e, nil
 }
-func makeCommand(command deploy.Command, output deploy.Output) *exec.Cmd {
-	cmd := exec.Command("/bin/sh", "-c", command.Script)
+func makeCommand(command deploy.Command, output deploy.Output, report *os.File) *exec.Cmd {
+	// Keep the group leader alive after the workload exits. FD 3 carries only its
+	// exit code and is closed in the workload; all application output stays on
+	// stdout/stderr. The runtime kills the owned group before calling Wait.
+	script := "/bin/sh -c '" + strings.ReplaceAll(command.Script, "'", "'\"'\"'") + "' 3>&- &\nchild=$!\nwait \"$child\"\nstatus=$?\nprintf '%s\\n' \"$status\" >&3\nkill -s STOP \"$$\"\n"
+	cmd := exec.Command("/bin/sh", "-c", script)
+	cmd.ExtraFiles = []*os.File{report}
 	cmd.Dir = command.Directory
 	cmd.Env = os.Environ()
 	for key, value := range command.Env {

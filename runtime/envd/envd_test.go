@@ -86,6 +86,7 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeEvent(w, `{"event":{"start":{"pid":42}}}`)
+		a.processes = []processInfo{{PID: 42, Tag: request.Tag}}
 		if a.mode == "hang" {
 			w.(http.Flusher).Flush()
 			a.mu.Unlock()
@@ -94,7 +95,6 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if a.mode == "background" {
-			a.processes = []processInfo{{PID: 42, Tag: request.Tag}}
 			return
 		}
 		writeEvent(w, `{"event":{"data":{"stdout":"aGVsbG8=","stderr":"ZXJyb3I="}}}`)
@@ -106,8 +106,39 @@ func (a *agent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeEvent(w, `{"event":{"end":{"exited":true,"exitCode":3,"error":"exit status 3"}}}`)
+		a.processes = nil
 	default:
 		w.WriteHeader(404)
+	}
+}
+
+func TestFailedStreamDoesNotSignalReusedPID(t *testing.T) {
+	var signals int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/Start"):
+			w.Header().Set("Content-Type", "application/connect+json")
+			writeEvent(w, `{"event":{"start":{"pid":42}}}`)
+			// The original command exited before its response stream failed;
+			// another execution now owns the same PID.
+		case strings.HasSuffix(r.URL.Path, "/List"):
+			_, _ = io.WriteString(w, `{"processes":[{"pid":42,"tag":"another-execution"}]}`)
+		case strings.HasSuffix(r.URL.Path, "/SendSignal"):
+			signals++
+			_, _ = io.WriteString(w, `{}`)
+		}
+	}))
+	defer server.Close()
+	rt, err := New(Options{RuntimeID: "r", BaseURL: server.URL, Endpoint: func(int) (string, error) { return "http://localhost", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rt.Run(context.Background(), deploy.Command{Script: "true"}, nil); !errors.Is(err, ErrProtocol) {
+		t.Fatal(err)
+	}
+	if signals != 0 {
+		t.Fatal("stream cleanup signalled a different execution")
 	}
 }
 func writeEvent(w http.ResponseWriter, message string) { _, _ = w.Write(envelope([]byte(message))) }

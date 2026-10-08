@@ -136,3 +136,75 @@ func TestSupervisorExitAndChildCleanup(t *testing.T) {
 		}
 	}
 }
+
+func TestStopBeforeSessionCreation(t *testing.T) {
+	root := t.TempDir()
+	wrapper := filepath.Join(root, "setsid")
+	ready := filepath.Join(root, "pre-session")
+	release := filepath.Join(root, "release")
+	started := filepath.Join(root, "workload-started")
+	script := "#!/bin/sh\nprintf '%s' \"$$\" > \"$PRE_SESSION\"\nwhile [ ! -f \"$RELEASE_SESSION\" ]; do sleep 0.01; done\nexec \"$DEPLOYD_SESSION_BINARY\" -test.run '^TestSessionHelper$' -- \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("/bin/sh", "-c", supervisedScript("printf started > \"$WORKLOAD_STARTED\"; sleep 60"))
+	cmd.Env = append(os.Environ(), "PATH="+root+":"+os.Getenv("PATH"), "DEPLOYD_SESSION_HELPER=1", "DEPLOYD_SESSION_BINARY="+os.Args[0], "PRE_SESSION="+ready, "RELEASE_SESSION="+release, "WORKLOAD_STARTED="+started)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait(); close(done) }()
+	var child int
+	defer func() {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		if child > 0 {
+			_ = syscall.Kill(-child, syscall.SIGKILL)
+			_ = syscall.Kill(child, syscall.SIGKILL)
+		}
+		_ = cmd.Process.Kill()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+		}
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(ready)
+		child, _ = strconv.Atoi(string(data))
+		if child > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if child == 0 {
+		t.Fatal("pre-session child did not start")
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(started); err == nil {
+			t.Fatalf("workload started after cancellation; child PID=%d", child)
+		}
+		select {
+		case err := <-done:
+			var exitError *exec.ExitError
+			if !errors.As(err, &exitError) || exitError.ExitCode() != 143 {
+				t.Fatalf("unexpected supervisor exit: %v", err)
+			}
+			return
+		default:
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("supervisor did not stop before session creation")
+}

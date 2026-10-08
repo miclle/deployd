@@ -9,11 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	deploy "github.com/miclle/deployd"
+	"github.com/miclle/deployd/internal/redact"
 )
 
 // ErrSource identifies a failed Git source operation without exposing output.
@@ -219,16 +219,9 @@ func (c *capture) flush() {
 			secrets = append(secrets, value)
 		}
 	}
-	sort.Slice(secrets, func(i, j int) bool { return len(secrets[i]) > len(secrets[j]) })
 	for _, stream := range []deploy.Stream{deploy.Stdout, deploy.Stderr} {
 		data := c.data[stream]
-		if c.truncated && len(secrets) > 0 {
-			data = data[:max(0, len(data)-len(secrets[0])+1)]
-		}
-		text := string(data)
-		for _, value := range secrets {
-			text = strings.ReplaceAll(text, value, "[REDACTED]")
-		}
+		text := string(redact.Bytes(data, secrets, c.truncated))
 		if text != "" {
 			c.output(stream, []byte(text))
 		}

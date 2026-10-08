@@ -44,3 +44,8 @@ permissions. No automated test provisions or destroys remote resources.
 
 See [live envd acceptance](envd-acceptance.md) for explicit opt-in, environment
 configuration, process/reconstruction tests and pinned deployment verification.
+
+Live-output tests verify pre-completion delivery, mixed streams, byte budgets,
+UTF-8 boundaries, late callbacks and overlapping/split redaction against the
+whole-stream reference algorithm. Log protocol tests cover PID confirmation,
+foreign tags, cancellation, malformed/failed streams and absence of signals.

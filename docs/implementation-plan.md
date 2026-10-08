@@ -21,7 +21,7 @@ pass `make coverage` (core >=95%, every adapter/helper >=90%). Commits remain lo
 | 2 | Compiled exact-byte plan persistence/restore example, shared protocol fixtures, migration notes covering original YAML, stable repository identity, strict 2xx readiness and caller-owned Host injection | Complete |
 | 3 | Opt-in acceptance tests against an existing isolated envd; credentials from environment only; detached lifetime, reconstructed adapter, exact-tag stop and finite cancellation; remote limitations documented | Implemented; live target pending |
 | 4 | Typed command exit errors and safe Git error categories without stderr parsing or automatic retry claims; failure-path tests and error handling docs | Complete |
-| 5 | Optional bounded live output subscription with cross-chunk redaction; adapter-level log attachment separate from Start/Stop; cancellation and failure tests | Pending |
+| 5 | Optional bounded live output subscription with cross-chunk redaction; adapter-level log attachment separate from Start/Stop; cancellation and failure tests | Complete |
 
 ## Evidence
 
@@ -31,14 +31,6 @@ Sandbox executor, and Worker packages. Those results do not prove live envd
 compatibility. Remote acceptance requires explicit environment configuration for
 an existing isolated target; no test provisions or destroys infrastructure.
 
-## Recovery contract
-
-An interrupted attempt is never resumed by calling `Apply` with the same operation
-ID. The controller persists intent before starting, fences/serializes ownership,
-inspects and stops the saved execution when required, then decides whether a fresh
-attempt is safe. `Restore` restores the immutable plan only. Installation commands
-can have external side effects; process cleanup alone never makes replay safe.
-
 Phase 1: compatible-toolchain lint and full race coverage passed; core 98.8%,
 envd 94.9%, local 95.6%, Git 96.6%, redaction 100%.
 
@@ -47,3 +39,13 @@ Phase 2: compatible-toolchain lint and core race tests passed; reusable protocol
 Phase 3: compatible-toolchain lint and full race coverage passed. Live tests compile and skip without opt-in; no isolated agent is configured in this shell, so remote acceptance remains unverified.
 
 Phase 4: compatible-toolchain lint and full race coverage passed; core 98.8%, Git 97.6%. Target checkout errors now retain uncertain process cleanup identity without exposing provider text.
+
+Phase 5: compatible-toolchain lint passed; full race coverage on Go 1.27.1 and full race tests on Go 1.25.6 passed. Core 98.7%, envd 95.8%, local 95.6%, Git 97.6%, redaction 98.9%. Checkpoint and log/error interfaces remain independent of resource orchestration.
+
+## Recovery contract
+
+An interrupted attempt is never resumed by calling `Apply` with the same operation
+ID. The controller persists intent before starting, fences/serializes ownership,
+inspects and stops the saved execution when required, then decides whether a fresh
+attempt is safe. `Restore` restores the immutable plan only. Installation commands
+can have external side effects; process cleanup alone never makes replay safe.

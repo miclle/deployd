@@ -65,8 +65,9 @@ Each attempt uses a fresh workspace and unique operation ID. Scripts are never
 retried automatically. Failed starts/probes attempt bounded process cleanup and
 return partial evidence, including uncertain starts. Readiness is a point-in-time
 2xx HTTP response with a running process, rather than a continuous health promise.
-Output callbacks receive bounded, redacted stage output; live application log
-streaming is owned by the embedding application.
+Output callbacks receive bounded, redacted stage output. Optional live execution
+output and envd log attachment are described in [logs](docs/logs.md); applications
+own log subscription lifetimes and storage.
 
 ## Development
 

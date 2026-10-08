@@ -3,6 +3,7 @@ package envd_test
 import (
 	"context"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path"
@@ -65,7 +66,7 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 		intent := deploy.ProcessRef{RuntimeID: rt.ID(), Tag: tag}
 		t.Cleanup(func() { liveCleanup(t, rt, intent) })
 		startCtx, cancelStart := context.WithTimeout(context.Background(), 10*time.Second)
-		ref, err := rt.Start(startCtx, deploy.Command{Script: "sleep 120 & wait", Tag: tag}, nil)
+		ref, err := rt.Start(startCtx, deploy.Command{Script: "while :; do printf 'acceptance-log\n'; sleep 1; done", Tag: tag}, nil)
 		cancelStart()
 		if err != nil || ref.ID == "" {
 			t.Fatal("start failed", err)
@@ -80,6 +81,16 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 				t.Fatal("workload did not survive stream/context close", err)
 			}
 		}
+		logCtx, cancelLogs := context.WithTimeout(context.Background(), 5*time.Second)
+		err = deploy.FollowLogs(logCtx, reconstructed, ref, deploy.LogOptions{MaxBytes: 16, OnOutput: func(deploy.OutputEvent) {}})
+		cancelLogs()
+		if !errors.Is(err, deploy.ErrLogLimit) {
+			t.Fatal("live log observation failed to enforce its budget", err)
+		}
+		state, inspectErr := reconstructed.Inspect(inspectCtx, ref)
+		if inspectErr != nil || !state.Running {
+			t.Fatal("ending log observation stopped the workload", inspectErr)
+		}
 		foreign := ref
 		foreign.Tag += "-foreign"
 		if err := reconstructed.Stop(inspectCtx, foreign); !errors.Is(err, deploy.ErrRuntimeMismatch) {
@@ -88,7 +99,7 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 		if err := deploy.Stop(inspectCtx, reconstructed, intent); err != nil {
 			t.Fatal(err)
 		}
-		state, err := reconstructed.Inspect(inspectCtx, ref)
+		state, err = reconstructed.Inspect(inspectCtx, ref)
 		if err != nil || state.Running {
 			t.Fatal("stop did not confirm absence", err)
 		}
@@ -109,8 +120,15 @@ func TestLiveEnvdAcceptance(t *testing.T) {
 		commandCtx, cancelCommand := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancelCommand()
 		var ready bool
+		var readinessPrefix string
 		_, err := rt.Run(commandCtx, deploy.Command{Script: "set -eu\nmkdir '" + directory + "'\nprintf '%s' \"$$\" > '" + directory + "/parent'\nsleep 120 &\nprintf '%s' \"$!\" > '" + directory + "/child'\nprintf ready\nwait"}, func(stream deploy.Stream, data []byte) {
-			if stream == deploy.Stdout && strings.Contains(string(data), "ready") {
+			if stream == deploy.Stdout && !ready {
+				readinessPrefix += string(data)
+				if len(readinessPrefix) > 5 {
+					readinessPrefix = readinessPrefix[:5]
+				}
+			}
+			if readinessPrefix == "ready" {
 				ready = true
 				cancelCommand()
 			}
@@ -136,7 +154,8 @@ func TestLiveEnvdDeployment(t *testing.T) {
 		}
 	}
 	commit := os.Getenv("DEPLOYD_ENVD_COMMIT")
-	if len(commit) != 40 && len(commit) != 64 {
+	_, decodeErr := hex.DecodeString(commit)
+	if (len(commit) != 40 && len(commit) != 64) || decodeErr != nil || strings.ToLower(commit) != commit {
 		t.Fatal("deployment acceptance requires a full commit")
 	}
 	root := os.Getenv("DEPLOYD_ENVD_WORK_ROOT")
@@ -156,6 +175,9 @@ func TestLiveEnvdDeployment(t *testing.T) {
 	plan, err := deploy.Prepare(ctx, source, configPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if plan.Snapshot().CommitSHA != commit {
+		t.Fatal("deployment fixture did not resolve to the requested commit")
 	}
 	rt := liveRuntime(t, options)
 	operationID := "acceptance-" + rand.Text()

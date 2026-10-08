@@ -50,3 +50,6 @@ and compiles these tests; a skipped live test is **not remote acceptance**.
 Token refresh, private-source grants, lost-PID transport injection, downstream
 atomic fencing, controller process crashes and public traffic cutover require
 separate provider/controller acceptance. Live logs have a separate contract.
+
+The process suite also attaches live logs, enforces their byte budget and verifies
+that ending observation leaves the workload running.

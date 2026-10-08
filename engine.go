@@ -46,9 +46,13 @@ type Options struct {
 	Env            map[string]string
 	Redact         []string
 	OnStage        func(context.Context, Stage) error
-	OnCheckpoint   func(context.Context, Checkpoint) error
-	OnOutput       func(OutputEvent)
-	HTTPClient     *http.Client
+	// OnCheckpoint durably acknowledges partial evidence after OnStage succeeds.
+	OnCheckpoint func(context.Context, Checkpoint) error
+	OnOutput     func(OutputEvent)
+	// OnLiveOutput optionally observes bounded redacted output during execution.
+	// It must return promptly and must not reenter runtime APIs.
+	OnLiveOutput func(OutputEvent)
+	HTTPClient   *http.Client
 }
 
 // Result carries partial execution evidence even on failure. Endpoint is a

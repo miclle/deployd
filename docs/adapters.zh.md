@@ -25,3 +25,5 @@ Linux agent 必须提供 `setsid`，POSIX shell 的 `kill` 必须支持负数进
 取消时先暂停子进程，再向进程组发送信号；若 `setsid` 尚未创建进程组，则直接终止该子进程，避免取消后服务仍继续启动。流异常清理必须先按执行标签核对身份，不会直接向曾观察到的 PID 发送信号。
 
 使用新的 agent 版本前运行[显式启用的验收测试](envd-acceptance.zh.md)。默认测试不访问远端目标。
+
+可选 `Logs` 通过 Process Connect 附着，由调用方通过 `FollowLogs` 管理订阅；其生命周期独立于进程。参见[日志](logs.zh.md)。

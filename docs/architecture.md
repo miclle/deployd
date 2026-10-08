@@ -71,7 +71,7 @@ PID confirmation; a late output callback is discarded after stage completion.
 
 Callbacks must return promptly. Repository output is untrusted and should be
 rendered as text. Redaction covers supplied literal values, not arbitrary secret
-transformations. Applications own any continuous log subscription and durable event
+transformations. Applications own log subscription lifetimes and durable event
 storage; configuration and commands should not embed credentials.
 
 ## Controller takeover
@@ -91,3 +91,6 @@ persist failure/cleanup completion: retain the final partial result and
 [recovery examples](../recovery_example_test.go).
 
 See [error handling](errors.md) for typed exit codes and safe source classifications.
+
+Optional [live output and service observation](logs.md) preserve the stage-end
+callback contract and keep observation cancellation separate from process stop.

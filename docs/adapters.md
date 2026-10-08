@@ -37,7 +37,8 @@ standard-library HTTP. Supply an existing agent URL, runtime identity, transient
 access token, user, and port-to-readiness-origin function. Agent calls disable
 redirects and cap each response/envelope at 1 MiB. Output is not accumulated without
 bounds. Start closes observation after PID confirmation; the agent must keep the
-process alive when the stream disconnects. No continuous log subscription is owned.
+process alive when the stream disconnects. Optional `Logs` attaches through Process Connect; callers own the subscription
+through `FollowLogs`, independently of process lifecycle. See [logs](logs.md).
 
 The Linux agent must provide `setsid` and a POSIX shell whose `kill` supports
 negative process-group IDs. Group cleanup uses `kill -s KILL -- -PGID`, compatible

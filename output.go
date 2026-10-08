@@ -31,15 +31,26 @@ type outputBuffer struct {
 	size      int
 	truncated bool
 	closed    bool
+	live      *liveOutput
 }
 
 func newOutputBuffer(stage Stage, options Options) *outputBuffer {
-	return &outputBuffer{stage: stage, options: options}
+	b := &outputBuffer{stage: stage, options: options}
+	if options.OnLiveOutput != nil {
+		b.live = newLiveOutput(stage, LogOptions{MaxBytes: MaxOutputBytes, Redact: options.Redact, OnOutput: options.OnLiveOutput})
+	}
+	return b
 }
 func (b *outputBuffer) write(stream Stream, data []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.closed || b.options.OnOutput == nil {
+	if b.closed {
+		return
+	}
+	if b.live != nil {
+		b.live.write(stream, data)
+	}
+	if b.options.OnOutput == nil {
 		return
 	}
 	remaining := MaxOutputBytes - b.size
@@ -64,6 +75,9 @@ func (b *outputBuffer) flush() {
 	b.chunks = nil
 	truncated := b.truncated
 	b.mu.Unlock()
+	if b.live != nil {
+		b.live.close()
+	}
 	if b.options.OnOutput == nil {
 		return
 	}
